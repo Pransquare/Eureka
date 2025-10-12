@@ -65,7 +65,7 @@ pipeline {
                         }
 
                         Write-Output '--- Copying JAR to EC2 via WinRM ---'
-                      Copy-Item -Path "target\\${SERVICE_NAME}-0.0.1-SNAPSHOT.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession $session -Force
+                     Copy-Item -Path "target\\${SERVICE_NAME}.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession $session -Force
 
                         Write-Output '--- Starting Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
