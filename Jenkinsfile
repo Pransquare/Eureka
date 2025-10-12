@@ -26,41 +26,45 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to EC2 via WinRM HTTPS') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'ec2-admin-creds',
-                                                  usernameVariable: 'EC2_USER',
-                                                  passwordVariable: 'EC2_PASSWORD')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'ec2-admin-creds',
+                    usernameVariable: 'EC2_USER',
+                    passwordVariable: 'EC2_PASSWORD'
+                )]) {
                     powershell """
-                        # Convert password to secure string
+                        Write-Host '--- Connecting to EC2 via WinRM HTTPS ---'
+
+                        # Convert password and create credentials
                         \$secpasswd = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
                         \$cred = New-Object System.Management.Automation.PSCredential ('${EC2_USER}', \$secpasswd)
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck
 
-                        # Create a PSSession to EC2
+                        # Create PSSession to EC2
                         \$session = New-PSSession -ComputerName ${EC2_HOST} -UseSSL -Credential \$cred -SessionOption \$sessOption
 
-                        # Create deployment directory if it doesn't exist
+                        Write-Host '--- Creating deployment directory if not exists ---'
                         Invoke-Command -Session \$session -ScriptBlock {
-                            if (-not (Test-Path -Path '${DEPLOY_DIR}')) {
-                                New-Item -Path '${DEPLOY_DIR}' -ItemType Directory | Out-Null
+                            if (-not (Test-Path '${DEPLOY_DIR}')) {
+                                New-Item -ItemType Directory -Path '${DEPLOY_DIR}' | Out-Null
                             }
                         }
 
-                        # Stop existing Java processes
+                        Write-Host '--- Stopping existing Java process ---'
                         Invoke-Command -Session \$session -ScriptBlock {
                             Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
 
-                        # Copy the JAR over WinRM
-                        Copy-Item -Path 'target\\${SERVICE_NAME}.jar' -Destination '${DEPLOY_DIR}\\${SERVICE_NAME}.jar' -ToSession \$session -Force
+                        Write-Host '--- Copying JAR to remote EC2 via WinRM ---'
+                        Copy-Item -Path "target\\${SERVICE_NAME}.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession \$session -Force
 
-                        # Start the Spring Boot service
+                        Write-Host '--- Starting the Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
-                            Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar --server.port=${SERVICE_PORT}" -NoNewWindow
+                            Start-Process -FilePath "java" -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar --server.port=${SERVICE_PORT}" -NoNewWindow
                         }
 
-                        # Close the session
+                        Write-Host '--- Cleaning up session ---'
                         Remove-PSSession \$session
                     """
                 }
