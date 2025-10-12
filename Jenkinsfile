@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent any // Jenkins agent should have PowerShell available (Windows agent recommended)
 
     tools {
         jdk 'Java17'
@@ -29,42 +29,49 @@ pipeline {
         stage('Deploy to EC2 via WinRM HTTPS') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds',
-                    usernameVariable: 'EC2_USER',
+                    credentialsId: 'ec2-admin-creds', 
+                    usernameVariable: 'EC2_USER', 
                     passwordVariable: 'EC2_PASSWORD'
                 )]) {
                     powershell """
-                        Write-Host '--- Connecting to EC2 via WinRM HTTPS ---'
+                        Write-Output '--- Connecting to EC2 via WinRM HTTPS ---'
 
-                        # Convert password and create credentials
-                        \$secpasswd = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
-                        \$cred = New-Object System.Management.Automation.PSCredential ('${EC2_USER}', \$secpasswd)
+                        # Convert password to secure string
+                        \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
+                        \$cred = New-Object System.Management.Automation.PSCredential ('${EC2_USER}', \$pass)
+
+                        # Skip SSL certificate validation
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck
 
-                        # Create PSSession to EC2
+                        # Create remote session
                         \$session = New-PSSession -ComputerName ${EC2_HOST} -UseSSL -Credential \$cred -SessionOption \$sessOption
-
-                        Write-Host '--- Creating deployment directory if not exists ---'
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            if (-not (Test-Path '${DEPLOY_DIR}')) {
-                                New-Item -ItemType Directory -Path '${DEPLOY_DIR}' | Out-Null
-                            }
+                        if (-not \$session) {
+                            throw 'Failed to create PSSession to EC2.'
                         }
 
-                        Write-Host '--- Stopping existing Java process ---'
+                        Write-Output '--- Creating deployment directory if not exists ---'
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            param(\$dir)
+                            if (-not (Test-Path -Path \$dir)) {
+                                New-Item -Path \$dir -ItemType Directory | Out-Null
+                            }
+                        } -ArgumentList '${DEPLOY_DIR}'
+
+                        Write-Output '--- Stopping existing Java processes ---'
                         Invoke-Command -Session \$session -ScriptBlock {
                             Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
 
-                        Write-Host '--- Copying JAR to remote EC2 via WinRM ---'
+                        Write-Output '--- Copying JAR to EC2 via WinRM ---'
                         Copy-Item -Path "target\\${SERVICE_NAME}.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession \$session -Force
 
-                        Write-Host '--- Starting the Spring Boot service ---'
+                        Write-Output '--- Starting Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
-                            Start-Process -FilePath "java" -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar --server.port=${SERVICE_PORT}" -NoNewWindow
-                        }
+                            param(\$jarPath, \$port)
+                            Start-Process -FilePath 'java' -ArgumentList "-jar \$jarPath --server.port=\$port" -NoNewWindow
+                        } -ArgumentList "${DEPLOY_DIR}\\${SERVICE_NAME}.jar", '${SERVICE_PORT}'
 
-                        Write-Host '--- Cleaning up session ---'
+                        Write-Output '--- Closing remote session ---'
                         Remove-PSSession \$session
                     """
                 }
