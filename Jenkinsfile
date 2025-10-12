@@ -38,18 +38,12 @@ pipeline {
 
                         # Convert password to secure string
                         \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
-
-                        # Use Administrator to match working test
                         \$cred = New-Object System.Management.Automation.PSCredential('Administrator', \$pass)
-
-                        # Skip SSL certificate validation for self-signed certs
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
 
-                        # Create remote session using Basic authentication
+                        # Create remote session
                         \$session = New-PSSession -ComputerName ${EC2_HOST} -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
-                        if (-not \$session) {
-                            throw 'Failed to create PSSession to EC2.'
-                        }
+                        if (-not \$session) { throw 'Failed to create PSSession to EC2.' }
 
                         Write-Output '--- Creating deployment directory if not exists ---'
                         Invoke-Command -Session \$session -ScriptBlock {
@@ -64,8 +58,14 @@ pipeline {
                             Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
 
-                        Write-Output '--- Copying JAR to EC2 via WinRM ---'
-                        Copy-Item -Path "target\\${SERVICE_NAME}.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession \$session -Force
+                        Write-Output '--- Copying JAR to EC2 using Start-BitsTransfer ---'
+                        # Use HTTPS share over WinRM to transfer the file
+                        \$remotePath = "\\\\${EC2_HOST}\\C\$\\Apps\\eureka-server\\${SERVICE_NAME}.jar"
+                        \$localPath = "${WORKSPACE}\\target\\${SERVICE_NAME}.jar"
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            param(\$source, \$destination)
+                            Start-BitsTransfer -Source \$source -Destination \$destination -Force
+                        } -ArgumentList \$localPath, "\${DEPLOY_DIR}\\${SERVICE_NAME}.jar"
 
                         Write-Output '--- Starting Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
