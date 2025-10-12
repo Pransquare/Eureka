@@ -1,5 +1,5 @@
 pipeline {
-    agent any // Ensure this is a Windows agent with PowerShell installed
+    agent any
 
     tools {
         jdk 'Java17'
@@ -43,34 +43,34 @@ pipeline {
                         # Skip SSL certificate validation for self-signed certs
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
 
-                        # Create remote session using Basic authentication
+                        # Create remote session
                         \$session = New-PSSession -ComputerName ${EC2_HOST} -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
                         if (-not \$session) { throw 'Failed to create PSSession to EC2.' }
 
-                        # Pick the latest JAR in the target folder
-                        Write-Output '--- Picking latest JAR from target folder ---'
-                        \$jar = Get-ChildItem "target\\${SERVICE_NAME}*.jar" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                        if (-not \$jar) { throw "No JAR found in target folder!" }
+                        # Pick the latest runnable Spring Boot JAR
+                        Write-Output '--- Picking latest runnable JAR from target folder ---'
+                        \$jar = Get-ChildItem "target\\${SERVICE_NAME}*.jar" | Where-Object { \$_ -notlike "*.original" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                        if (-not \$jar) { throw "No runnable JAR found in target folder!" }
                         Write-Output "Latest JAR: \$($jar.FullName)"
 
-                        # Create deployment directory on EC2
+                        # Create deployment directory
                         Write-Output '--- Creating deployment directory if not exists ---'
                         Invoke-Command -Session \$session -ScriptBlock {
                             param(\$dir)
                             if (-not (Test-Path -Path \$dir)) { New-Item -Path \$dir -ItemType Directory | Out-Null }
                         } -ArgumentList '${DEPLOY_DIR}'
 
-                        # Stop existing Java processes on EC2
+                        # Stop existing Java processes
                         Write-Output '--- Stopping existing Java processes ---'
                         Invoke-Command -Session \$session -ScriptBlock {
                             Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
 
-                        # Copy the JAR to EC2
+                        # Copy the runnable JAR
                         Write-Output '--- Copying JAR to EC2 via WinRM ---'
                         Copy-Item -Path \$jar.FullName -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession \$session -Force
 
-                        # Start Spring Boot service on EC2
+                        # Start Spring Boot service
                         Write-Output '--- Starting Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
                             param(\$jarPath, \$port)
