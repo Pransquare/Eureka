@@ -8,8 +8,6 @@ pipeline {
 
     environment {
         EC2_HOST = "13.53.193.215"
-        EC2_USER = "Administrator"       // Your EC2 Windows user
-        EC2_PASSWORD = "d8%55Ir.%Z!hNR%VgUe-07OYX0ujLy;S" // Or use Jenkins credentials for security
         DEPLOY_DIR = "C:\\Apps\\eureka-server"
         SERVICE_NAME = "eureka-server"
         SERVICE_PORT = "8761"
@@ -30,25 +28,38 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
-                script {
-                    // 1️⃣ Copy the built JAR to EC2 (using WinRM)
-                    bat """
-                    psexec \\\\${EC2_HOST} -u ${EC2_USER} -p ${EC2_PASSWORD} cmd /c "if not exist ${DEPLOY_DIR} mkdir ${DEPLOY_DIR}"
-                    """
+                // Use Jenkins credentials for secure handling
+                withCredentials([usernamePassword(credentialsId: 'ec2-admin-creds',
+                                                  usernameVariable: 'EC2_USER',
+                                                  passwordVariable: 'EC2_PASSWORD')]) {
+                    script {
+                        powershell """
+                        # Convert password to secure string
+                        \$secpasswd = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
+                        \$cred = New-Object System.Management.Automation.PSCredential ('${EC2_USER}', \$secpasswd)
 
-                    bat """
-                    copy target\\*.jar \\\\${EC2_HOST}\\${DEPLOY_DIR}\\
-                    """
+                        # 1️⃣ Create deployment directory if it doesn't exist
+                        Invoke-Command -ComputerName ${EC2_HOST} -Credential \$cred -UseSSL -ScriptBlock {
+                            if (-not (Test-Path -Path '${DEPLOY_DIR}')) {
+                                New-Item -Path '${DEPLOY_DIR}' -ItemType Directory | Out-Null
+                            }
+                        }
 
-                    // 2️⃣ Stop existing service (if running)
-                    bat """
-                    psexec \\\\${EC2_HOST} -u ${EC2_USER} -p ${EC2_PASSWORD} taskkill /F /IM java.exe || exit 0
-                    """
+                        # 2️⃣ Stop existing Java processes
+                        Invoke-Command -ComputerName ${EC2_HOST} -Credential \$cred -UseSSL -ScriptBlock {
+                            Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
+                        }
 
-                    // 3️⃣ Start new instance
-                    bat """
-                    psexec \\\\${EC2_HOST} -u ${EC2_USER} -p ${EC2_PASSWORD} cmd /c "start java -jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar --server.port=${SERVICE_PORT}"
-                    """
+                        # 3️⃣ Copy the JAR to EC2 (over administrative share or S3 download)
+                        # Here we use SMB share (ensure Jenkins IP has access) - you can switch to S3 if needed
+                        Copy-Item -Path 'target\\${SERVICE_NAME}.jar' -Destination "\\\\${EC2_HOST}\\C\$\\Apps\\eureka-server\\" -Credential \$cred -Force
+
+                        # 4️⃣ Start the Spring Boot service
+                        Invoke-Command -ComputerName ${EC2_HOST} -Credential \$cred -UseSSL -ScriptBlock {
+                            Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar --server.port=${SERVICE_PORT}" -NoNewWindow
+                        }
+                        """
+                    }
                 }
             }
         }
