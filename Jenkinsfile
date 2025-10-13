@@ -1,17 +1,18 @@
 pipeline {
-    agent any
+    agent any // Ensure this is a Windows agent with PowerShell installed
 
-    tools {
-        jdk 'Java17'
-        maven 'Maven3'
-    }
+    tools {        
+        jdk 'Java17'        
+        maven 'Maven3'    
+    }    
 
-    environment {
+    environment {        
         EC2_HOST = "13.53.193.215"
         DEPLOY_DIR = "C:\\Apps\\eureka-server"
         SERVICE_NAME = "eureka-server"
         SERVICE_PORT = "8761"
-        S3_BUCKET = "eureka-deployment-2025" // Replace with your S3 bucket
+        S3_BUCKET = "eureka-deployment-2025" // Replace with your bucket
+        AWS_REGION = "Europe (Stockholm) eu-north-1"         // Replace with your bucket region
     }
 
     stages {
@@ -29,10 +30,11 @@ pipeline {
 
         stage('Upload to S3') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-                                  credentialsId: 'aws-jenkins-creds']]) {
+                // Use AWS credentials stored in Jenkins
+                withAWS(credentials: 'aws-jenkins-creds', region: "${AWS_REGION}") {
                     bat """
-                    aws s3 cp target\\${SERVICE_NAME}.jar s3://${S3_BUCKET}/${SERVICE_NAME}.jar
+                    echo --- Uploading JAR to S3 ---
+                    aws s3 cp target\\${SERVICE_NAME}.jar s3://${S3_BUCKET}/${SERVICE_NAME}.jar --region ${AWS_REGION}
                     """
                 }
             }
@@ -48,7 +50,6 @@ pipeline {
                     powershell """
                         Write-Output '--- Starting deployment to EC2 ---'
 
-                        # Convert password to secure string
                         \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
                         \$cred = New-Object System.Management.Automation.PSCredential('Administrator', \$pass)
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
@@ -70,11 +71,11 @@ pipeline {
                             Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
 
-                        Write-Output '--- Downloading JAR from S3 on EC2 ---'
+                        Write-Output '--- Downloading JAR from S3 ---'
                         Invoke-Command -Session \$session -ScriptBlock {
-                            param(\$bucket, \$dest)
-                            aws s3 cp s3://\$bucket/${SERVICE_NAME}.jar \$dest --region YOUR_AWS_REGION
-                        } -ArgumentList '${S3_BUCKET}', '${DEPLOY_DIR}\\${SERVICE_NAME}.jar'
+                            param(\$bucket, \$jarPath)
+                            aws s3 cp s3://\$bucket/${SERVICE_NAME}.jar \$jarPath --region ${AWS_REGION}
+                        } -ArgumentList '${S3_BUCKET}', "${DEPLOY_DIR}\\${SERVICE_NAME}.jar"
 
                         Write-Output '--- Starting Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
