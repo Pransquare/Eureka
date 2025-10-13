@@ -11,7 +11,6 @@ pipeline {
         SERVICE_PORT = "8761"
         S3_BUCKET = "eureka-deployment-2025"
         REGION = "eu-north-1"
-        EC2_HOST = "13.53.193.215"
     }
 
     stages {
@@ -30,60 +29,45 @@ pipeline {
         stage('Upload JAR to S3') {
             steps {
                 withAWS(credentials: 'aws-jenkins-creds', region: "${REGION}") {
-                    s3Upload(
-                        bucket: "${S3_BUCKET}",
-                        path: "${SERVICE_NAME}.jar",
-                        file: "target\\${SERVICE_NAME}.jar"
-                    )
+                    s3Upload(bucket: "${S3_BUCKET}", path: "${SERVICE_NAME}.jar", file: "target\\${SERVICE_NAME}.jar")
                 }
             }
         }
 
         stage('Deploy to EC2 via WinRM') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds',
-                    usernameVariable: 'EC2_USER',
-                    passwordVariable: 'EC2_PASSWORD'
-                )]) {
-                    powershell """
-                        # Convert password to secure string
-                        \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
-                        \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
+                powershell """
+                    # Hardcoded credentials (temporary for testing)
+                    \$username = 'Administrator'
+                    \$password = 'd8%55Ir.%Z!hNR%VgUe-07OYX0ujLy;S'
+                    \$secPassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                    \$cred = New-Object System.Management.Automation.PSCredential(\$username, \$secPassword)
 
-                        # Session options to skip certificate checks
-                        \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+                    # Session options to skip certificate checks
+                    \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
 
-                        # Create WinRM session over HTTPS
-                        \$session = New-PSSession -ComputerName '${EC2_HOST}' `
-                                                  -UseSSL `
-                                                  -Credential \$cred `
-                                                  -Authentication Basic `
-                                                  -SessionOption \$sessOption
+                    # Create WinRM session using HTTPS
+                    \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
 
-                        # Execute deployment commands on EC2
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            # Ensure deployment directory exists
-                            if (-Not (Test-Path '${DEPLOY_DIR}')) {
-                                New-Item -ItemType Directory -Path '${DEPLOY_DIR}'
-                            }
-
-                            # Download the JAR from S3
-                            aws s3 cp s3://${S3_BUCKET}/${SERVICE_NAME}.jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar
-
-                            # Stop any existing Java process running this service
-                            Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
-
-                            # Start the JAR
-                            Start-Process -FilePath 'java' `
-                                          -ArgumentList '-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar' `
-                                          -WindowStyle Hidden
+                    # Commands to deploy JAR
+                    Invoke-Command -Session \$session -ScriptBlock {
+                        if (-Not (Test-Path '${DEPLOY_DIR}')) {
+                            New-Item -ItemType Directory -Path '${DEPLOY_DIR}'
                         }
 
-                        # Close the session
-                        Remove-PSSession \$session
-                    """
-                }
+                        # Download JAR from S3
+                        aws s3 cp s3://${S3_BUCKET}/${SERVICE_NAME}.jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar
+
+                        # Stop existing Java process
+                        Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
+
+                        # Start the new JAR
+                        Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -WindowStyle Hidden
+                    }
+
+                    # Close session
+                    Remove-PSSession \$session
+                """
             }
         }
     }
