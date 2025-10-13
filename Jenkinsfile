@@ -1,100 +1,93 @@
-pipeline {    
-    agent any  // Ensure this is a Windows agent with PowerShell installed    
+pipeline {
+    agent any // Windows agent not strictly required for this approach
 
-    tools {        
-        jdk 'Java17'        
-        maven 'Maven3'    
-    }    
+    tools {
+        jdk 'Java17'
+        maven 'Maven3'
+    }
 
-    environment {        
-        EC2_HOST = "13.53.193.215"        
-        DEPLOY_DIR = "C:\\Apps\\eureka-server"        
-        SERVICE_NAME = "eureka-server"        
-        SERVICE_PORT = "8761"    
-    }    
+    environment {
+        S3_BUCKET = "my-deploy-bucket" // Replace with your S3 bucket name
+        S3_KEY = "eureka-server/${BUILD_NUMBER}/eureka-server.jar"
+        EC2_HOST = "13.53.193.215"
+        DEPLOY_DIR = "C:\\Apps\\eureka-server"
+        SERVICE_NAME = "eureka-server"
+        SERVICE_PORT = "8761"
+        AWS_CREDENTIALS_ID = "aws-credentials" // Jenkins AWS credentials ID
+    }
 
-    stages {        
-        stage('Checkout') {            
-            steps {                
-                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'            
-            }        
-        }        
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
+            }
+        }
 
-        stage('Build') {            
-            steps {                
-                bat 'mvn clean package -DskipTests'            
-            }        
-        }        
+        stage('Build') {
+            steps {
+                bat 'mvn clean package -DskipTests'
+            }
+        }
 
-        stage('Deploy to EC2 via WinRM HTTPS') {            
-            steps {                
+        stage('Upload to S3') {
+            steps {
+                withAWS(credentials: "${AWS_CREDENTIALS_ID}", region: 'ap-south-1') {
+                    s3Upload(
+                        bucket: "${S3_BUCKET}",
+                        file: "${WORKSPACE}\\target\\${SERVICE_NAME}.jar",
+                        path: "${S3_KEY}",
+                        acl: 'private'
+                    )
+                }
+            }
+        }
+
+        stage('Deploy on EC2') {
+            steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds', 
-                    usernameVariable: 'EC2_USER', 
+                    credentialsId: 'ec2-admin-creds',
+                    usernameVariable: 'EC2_USER',
                     passwordVariable: 'EC2_PASSWORD'
-                )]) {                    
-                    powershell '''
-                        Write-Output "=== Starting deployment to EC2 (${env:EC2_HOST}) ==="
+                )]) {
+                    powershell """
+                        Write-Output '--- Connecting to EC2 ---'
 
-                        try {
-                            # Convert password to secure string
-                            $securePass = ConvertTo-SecureString $env:EC2_PASSWORD -AsPlainText -Force
-                            $cred = New-Object System.Management.Automation.PSCredential ($env:EC2_USER, $securePass)
-                            $sessionOptions = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+                        # Convert password to secure string
+                        \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
+                        \$cred = New-Object System.Management.Automation.PSCredential('Administrator', \$pass)
+                        \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
 
-                            Write-Output "--- Creating remote PowerShell session ---"
-                            $session = New-PSSession -ComputerName $env:EC2_HOST -UseSSL -Credential $cred -Authentication Basic -SessionOption $sessionOptions
-                            if (-not $session) { throw "❌ Failed to create PSSession to EC2 instance." }
+                        \$session = New-PSSession -ComputerName ${EC2_HOST} -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                        if (-not \$session) { throw 'Failed to create PSSession to EC2.' }
 
-                            Write-Output "--- Ensuring deployment directory exists ---"
-                            Invoke-Command -Session $session -ScriptBlock {
-                                param($dir)
-                                if (-not (Test-Path -Path $dir)) {
-                                    New-Item -Path $dir -ItemType Directory | Out-Null
-                                    Write-Output "Created directory: $dir"
-                                } else {
-                                    Write-Output "Directory already exists: $dir"
-                                }
-                            } -ArgumentList $env:DEPLOY_DIR
+                        Write-Output '--- Creating deployment directory if not exists ---'
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            param(\$dir)
+                            if (-not (Test-Path -Path \$dir)) { New-Item -Path \$dir -ItemType Directory | Out-Null }
+                        } -ArgumentList '${DEPLOY_DIR}'
 
-                            Write-Output "--- Stopping any running Java processes ---"
-                            Invoke-Command -Session $session -ScriptBlock {
-                                $procs = Get-Process java -ErrorAction SilentlyContinue
-                                if ($procs) {
-                                    $procs | Stop-Process -Force
-                                    Write-Output "Stopped existing Java processes."
-                                } else {
-                                    Write-Output "No running Java processes found."
-                                }
-                            }
-
-                            Write-Output "--- Copying JAR file to EC2 ---"
-                            Copy-Item -ToSession $session `
-                                -Path "$env:WORKSPACE\\target\\$env:SERVICE_NAME.jar" `
-                                -Destination "$env:DEPLOY_DIR\\$env:SERVICE_NAME.jar" `
-                                -Force
-
-                            Write-Output "--- Starting Spring Boot service ---"
-                            Invoke-Command -Session $session -ScriptBlock {
-                                param($jarPath, $port)
-                                $logPath = Join-Path (Split-Path $jarPath) "eureka.log"
-                                Write-Output "Starting JAR: $jarPath on port $port"
-                                Start-Process "java" "-jar `"$jarPath`" --server.port=$port" -RedirectStandardOutput $logPath -RedirectStandardError $logPath -WindowStyle Hidden
-                                Write-Output "Application started. Logs: $logPath"
-                            } -ArgumentList "$env:DEPLOY_DIR\\$env:SERVICE_NAME.jar", $env:SERVICE_PORT
-
-                            Write-Output "--- Closing remote session ---"
-                            Remove-PSSession $session
-
-                            Write-Output "✅ Deployment completed successfully."
+                        Write-Output '--- Stopping any running Java processes ---'
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
-                        catch {
-                            Write-Output "❌ Deployment failed: $($_.Exception.Message)"
-                            exit 1
-                        }
-                    '''
-                }            
-            }        
-        }    
+
+                        Write-Output '--- Downloading JAR from S3 ---'
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            param(\$bucket, \$key, \$destination)
+                            aws s3 cp "s3://\$bucket/\$key" \$destination
+                        } -ArgumentList "${S3_BUCKET}", "${S3_KEY}", "${DEPLOY_DIR}\\${SERVICE_NAME}.jar"
+
+                        Write-Output '--- Starting Spring Boot service ---'
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            param(\$jarPath, \$port)
+                            Start-Process -FilePath 'java' -ArgumentList "-jar \$jarPath --server.port=\$port" -NoNewWindow
+                        } -ArgumentList "${DEPLOY_DIR}\\${SERVICE_NAME}.jar", '${SERVICE_PORT}'
+
+                        Write-Output '--- Closing remote session ---'
+                        Remove-PSSession \$session
+                    """
+                }
+            }
+        }
     }
 }
