@@ -34,49 +34,47 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2 via WinRM HTTPS') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds',
-                    usernameVariable: 'EC2_USER',
-                    passwordVariable: 'EC2_PASSWORD'
-                )]) {
-                    powershell """
-                        # Convert the password to a secure string
-                        \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
-                        
-                        # Create PSCredential object
-                        \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
-                        
-                        # Define WinRM session options
-                        \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
-                        
-                        # Connect to EC2 via WinRM HTTPS
-                        \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
-                        
-                        # Run deployment commands on EC2
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            param(\$bucket, \$serviceName, \$deployDir)
-                            
-                            # Ensure deployment directory exists
-                            if (-not (Test-Path \$deployDir)) { New-Item -ItemType Directory -Path \$deployDir }
-                            
-                            # Download JAR from S3
-                            aws s3 cp s3://\$bucket/\$serviceName.jar "\$deployDir\\\$serviceName.jar" --region ${REGION}
-                            
-                            # Stop existing Java process if running
-                            \$proc = Get-Process -Name "java" -ErrorAction SilentlyContinue
-                            if (\$proc) { Stop-Process -Name "java" -Force }
-                            
-                            # Start the new JAR
-                            Start-Process -FilePath "java" -ArgumentList "-jar \$deployDir\\\$serviceName.jar" -NoNewWindow
-                        } -ArgumentList "${S3_BUCKET}", "${SERVICE_NAME}", "${DEPLOY_DIR}"
-                        
-                        # Close the session
-                        Remove-PSSession \$session
-                    """
+        stage('Deploy to EC2 via WinRM and S3') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'ec2-admin-creds', 
+            usernameVariable: 'EC2_USER', 
+            passwordVariable: 'EC2_PASSWORD'
+        )]) {
+            powershell """
+                # Convert password to secure string
+                \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
+                \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
+                
+                # WinRM session options
+                \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+                
+                # Create WinRM session
+                \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                
+                # On EC2, download JAR from S3 using AWS CLI
+                Invoke-Command -Session \$session -ScriptBlock {
+                    # Make sure AWS CLI is installed and configured
+                    if (-Not (Test-Path 'C:\\Deployments')) {
+                        New-Item -ItemType Directory -Path 'C:\\Deployments'
+                    }
+
+                    # Download from S3
+                    aws s3 cp s3://eureka-deployment-2025/eureka-server.jar C:\\Deployments\\eureka-server.jar
+
+                    # Stop existing Java process (if needed)
+                    Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
+
+                    # Run the JAR
+                    Start-Process -FilePath 'java' -ArgumentList '-jar C:\\Deployments\\eureka-server.jar' -WindowStyle Hidden
                 }
-            }
+
+                # Close session
+                Remove-PSSession \$session
+            """
         }
+    }
+}
+
     }
 }
