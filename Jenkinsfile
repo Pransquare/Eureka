@@ -1,5 +1,5 @@
 pipeline {    
-    agent any // Ensure this is a Windows agent with PowerShell installed    
+    agent any  // Ensure this is a Windows agent with PowerShell installed    
 
     tools {        
         jdk 'Java17'        
@@ -33,46 +33,66 @@ pipeline {
                     usernameVariable: 'EC2_USER', 
                     passwordVariable: 'EC2_PASSWORD'
                 )]) {                    
-                    powershell """
-                        Write-Output '--- Starting deployment to EC2 ---'
+                    powershell '''
+                        Write-Output "=== Starting deployment to EC2 (${env:EC2_HOST}) ==="
 
-                        # Convert password to secure string
-                        \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
-                        \$cred = New-Object System.Management.Automation.PSCredential('Administrator', \$pass)
-                        \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+                        try {
+                            # Convert password to secure string
+                            $securePass = ConvertTo-SecureString $env:EC2_PASSWORD -AsPlainText -Force
+                            $cred = New-Object System.Management.Automation.PSCredential ($env:EC2_USER, $securePass)
+                            $sessionOptions = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
 
-                        # Create remote session
-                        \$session = New-PSSession -ComputerName ${EC2_HOST} -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
-                        if (-not \$session) { throw 'Failed to create PSSession to EC2.' }
+                            Write-Output "--- Creating remote PowerShell session ---"
+                            $session = New-PSSession -ComputerName $env:EC2_HOST -UseSSL -Credential $cred -Authentication Basic -SessionOption $sessionOptions
+                            if (-not $session) { throw "❌ Failed to create PSSession to EC2 instance." }
 
-                        Write-Output '--- Creating deployment directory if not exists ---'
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            param(\$dir)
-                            if (-not (Test-Path -Path \$dir)) {
-                                New-Item -Path \$dir -ItemType Directory | Out-Null
+                            Write-Output "--- Ensuring deployment directory exists ---"
+                            Invoke-Command -Session $session -ScriptBlock {
+                                param($dir)
+                                if (-not (Test-Path -Path $dir)) {
+                                    New-Item -Path $dir -ItemType Directory | Out-Null
+                                    Write-Output "Created directory: $dir"
+                                } else {
+                                    Write-Output "Directory already exists: $dir"
+                                }
+                            } -ArgumentList $env:DEPLOY_DIR
+
+                            Write-Output "--- Stopping any running Java processes ---"
+                            Invoke-Command -Session $session -ScriptBlock {
+                                $procs = Get-Process java -ErrorAction SilentlyContinue
+                                if ($procs) {
+                                    $procs | Stop-Process -Force
+                                    Write-Output "Stopped existing Java processes."
+                                } else {
+                                    Write-Output "No running Java processes found."
+                                }
                             }
-                        } -ArgumentList '${DEPLOY_DIR}'
 
-                        Write-Output '--- Stopping existing Java processes ---'
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
+                            Write-Output "--- Copying JAR file to EC2 ---"
+                            Copy-Item -ToSession $session `
+                                -Path "$env:WORKSPACE\\target\\$env:SERVICE_NAME.jar" `
+                                -Destination "$env:DEPLOY_DIR\\$env:SERVICE_NAME.jar" `
+                                -Force
+
+                            Write-Output "--- Starting Spring Boot service ---"
+                            Invoke-Command -Session $session -ScriptBlock {
+                                param($jarPath, $port)
+                                $logPath = Join-Path (Split-Path $jarPath) "eureka.log"
+                                Write-Output "Starting JAR: $jarPath on port $port"
+                                Start-Process "java" "-jar `"$jarPath`" --server.port=$port" -RedirectStandardOutput $logPath -RedirectStandardError $logPath -WindowStyle Hidden
+                                Write-Output "Application started. Logs: $logPath"
+                            } -ArgumentList "$env:DEPLOY_DIR\\$env:SERVICE_NAME.jar", $env:SERVICE_PORT
+
+                            Write-Output "--- Closing remote session ---"
+                            Remove-PSSession $session
+
+                            Write-Output "✅ Deployment completed successfully."
                         }
-
-                        Write-Output '--- Copying JAR to EC2 using Copy-Item -ToSession ---'
-                        Copy-Item -ToSession \$session `
-                          -Path "${WORKSPACE}\\target\\${SERVICE_NAME}.jar" `
-                          -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" `
-                          -Force
-
-                        Write-Output '--- Starting Spring Boot service ---'
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            param(\$jarPath, \$port)
-                            Start-Process -FilePath 'java' -ArgumentList "-jar \$jarPath --server.port=\$port" -NoNewWindow
-                        } -ArgumentList "${DEPLOY_DIR}\\${SERVICE_NAME}.jar", '${SERVICE_PORT}'
-
-                        Write-Output '--- Closing remote session ---'
-                        Remove-PSSession \$session
-                    """
+                        catch {
+                            Write-Output "❌ Deployment failed: $($_.Exception.Message)"
+                            exit 1
+                        }
+                    '''
                 }            
             }        
         }    
