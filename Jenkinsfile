@@ -11,7 +11,6 @@ pipeline {
         SERVICE_PORT = "8761"
         S3_BUCKET = "eureka-deployment-2025"
         REGION = "eu-north-1"
-        EC2_HOST = "13.53.193.215" // Change as needed
     }
 
     stages {
@@ -38,39 +37,42 @@ pipeline {
         stage('Deploy to EC2 via WinRM HTTPS') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds', 
-                    usernameVariable: 'EC2_USER', 
+                    credentialsId: 'ec2-admin-creds',
+                    usernameVariable: 'EC2_USER',
                     passwordVariable: 'EC2_PASSWORD'
                 )]) {
                     powershell """
-                        # Convert password to secure string
-                        \$secPassword = ConvertTo-SecureString "\$env:EC2_PASSWORD" -AsPlainText -Force
+                        # Convert the password to a secure string
+                        \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
                         
                         # Create PSCredential object
-                        \$cred = New-Object System.Management.Automation.PSCredential("\$env:EC2_USER", \$secPassword)
+                        \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
                         
-                        # WinRM session options to skip SSL checks
+                        # Define WinRM session options
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
                         
-                        # Create a WinRM session to EC2
-                        \$session = New-PSSession -ComputerName "${EC2_HOST}" -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                        # Connect to EC2 via WinRM HTTPS
+                        \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
                         
-                        # Ensure deployment directory exists
-                        Invoke-Command -Session \$session -ScriptBlock { param(\$dir) if (-Not (Test-Path \$dir)) { New-Item -ItemType Directory -Path \$dir } } -ArgumentList "${DEPLOY_DIR}"
-                        
-                        # Copy JAR to EC2
-                        Copy-Item -Path "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\Eureka-deploy-AWS\\target\\${SERVICE_NAME}.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -ToSession \$session
-                        
-                        # Stop any running instance (optional)
-                        Invoke-Command -Session \$session -ScriptBlock { 
+                        # Run deployment commands on EC2
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            param(\$bucket, \$serviceName, \$deployDir)
+                            
+                            # Ensure deployment directory exists
+                            if (-not (Test-Path \$deployDir)) { New-Item -ItemType Directory -Path \$deployDir }
+                            
+                            # Download JAR from S3
+                            aws s3 cp s3://\$bucket/\$serviceName.jar "\$deployDir\\\$serviceName.jar" --region ${REGION}
+                            
+                            # Stop existing Java process if running
                             \$proc = Get-Process -Name "java" -ErrorAction SilentlyContinue
                             if (\$proc) { Stop-Process -Name "java" -Force }
-                        }
-
-                        # Start new JAR
-                        Invoke-Command -Session \$session -ScriptBlock { Start-Process -FilePath "java" -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -NoNewWindow }
+                            
+                            # Start the new JAR
+                            Start-Process -FilePath "java" -ArgumentList "-jar \$deployDir\\\$serviceName.jar" -NoNewWindow
+                        } -ArgumentList "${S3_BUCKET}", "${SERVICE_NAME}", "${DEPLOY_DIR}"
                         
-                        # Close session
+                        # Close the session
                         Remove-PSSession \$session
                     """
                 }
