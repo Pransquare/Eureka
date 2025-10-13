@@ -11,6 +11,9 @@ pipeline {
         SERVICE_PORT = "8761"
         S3_BUCKET = "eureka-deployment-2025"
         REGION = "eu-north-1"
+        EC2_HOST = "13.53.193.215" // Replace with your EC2 public IP
+        EC2_USER = "Administrator"
+        EC2_PASS = "d8%55Ir.%Z!hNR%VgUe-07OYX0ujLy;S"
     }
 
     stages {
@@ -37,20 +40,19 @@ pipeline {
         stage('Deploy to EC2 via WinRM') {
             steps {
                 powershell """
-                    # Hardcoded credentials (temporary for testing)
-                    \$username = 'Administrator'
-                    \$password = 'd8%55Ir.%Z!hNR%VgUe-07OYX0ujLy;S'
-                    \$secPassword = ConvertTo-SecureString \$password -AsPlainText -Force
-                    \$cred = New-Object System.Management.Automation.PSCredential(\$username, \$secPassword)
+                    # Convert password to secure string
+                    \$secPassword = ConvertTo-SecureString '${EC2_PASS}' -AsPlainText -Force
+                    \$cred = New-Object System.Management.Automation.PSCredential('${EC2_USER}', \$secPassword)
 
                     # Session options to skip certificate checks
                     \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
 
                     # Create WinRM session using HTTPS
-                    \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                    \$session = New-PSSession -ComputerName '${EC2_HOST}' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
 
-                    # Commands to deploy JAR
+                    # Deploy commands
                     Invoke-Command -Session \$session -ScriptBlock {
+                        # Create deployment directory if missing
                         if (-Not (Test-Path '${DEPLOY_DIR}')) {
                             New-Item -ItemType Directory -Path '${DEPLOY_DIR}'
                         }
@@ -58,11 +60,15 @@ pipeline {
                         # Download JAR from S3
                         aws s3 cp s3://${S3_BUCKET}/${SERVICE_NAME}.jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar
 
-                        # Stop existing Java process
-                        Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
+                        # Stop existing JAR process safely
+                        $oldProcess = Get-Process -Name java -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*${SERVICE_NAME}.jar*" }
+                        if ($oldProcess) { $oldProcess | Stop-Process -Force }
 
-                        # Start the new JAR
-                        Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -WindowStyle Hidden
+                        # Optional wait
+                        Start-Sleep -Seconds 3
+
+                        # Start the new JAR and log output
+                        Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar > ${DEPLOY_DIR}\\logs.txt 2>&1" -WindowStyle Hidden
                     }
 
                     # Close session
