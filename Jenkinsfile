@@ -58,14 +58,11 @@ pipeline {
                             Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
                         }
 
-                        Write-Output '--- Copying JAR to EC2 using Start-BitsTransfer ---'
-                        # Use HTTPS share over WinRM to transfer the file
-                        \$remotePath = "\\\\${EC2_HOST}\\C\$\\Apps\\eureka-server\\${SERVICE_NAME}.jar"
-                        \$localPath = "${WORKSPACE}\\target\\${SERVICE_NAME}.jar"
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            param(\$source, \$destination)
-                            Start-BitsTransfer -Source \$source -Destination \$destination -Force
-                        } -ArgumentList \$localPath, "\${DEPLOY_DIR}\\${SERVICE_NAME}.jar"
+                        Write-Output '--- Copying JAR to EC2 using Copy-Item -ToSession ---'
+                        Copy-Item -ToSession \$session `
+                          -Path "${WORKSPACE}\\target\\${SERVICE_NAME}.jar" `
+                          -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" `
+                          -Force
 
                         Write-Output '--- Starting Spring Boot service ---'
                         Invoke-Command -Session \$session -ScriptBlock {
