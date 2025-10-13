@@ -8,6 +8,7 @@ pipeline {
     environment {
         DEPLOY_DIR = "C:\\Deployments"
         SERVICE_NAME = "eureka-server"
+        SERVICE_PORT = "8761"
         S3_BUCKET = "eureka-deployment-2025"
         REGION = "eu-north-1"
         EC2_HOST = "13.53.193.215"
@@ -29,7 +30,11 @@ pipeline {
         stage('Upload JAR to S3') {
             steps {
                 withAWS(credentials: 'aws-jenkins-creds', region: "${REGION}") {
-                    s3Upload(bucket: "${S3_BUCKET}", path: "${SERVICE_NAME}.jar", file: "target\\${SERVICE_NAME}.jar")
+                    s3Upload(
+                        bucket: "${S3_BUCKET}",
+                        path: "${SERVICE_NAME}.jar",
+                        file: "target\\${SERVICE_NAME}.jar"
+                    )
                 }
             }
         }
@@ -45,27 +50,37 @@ pipeline {
                         # Convert password to secure string
                         \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
                         \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
-                        
-                        # Create WinRM session
-                        \$session = New-PSSession -ComputerName '${EC2_HOST}' -Credential \$cred -Authentication Basic
 
-                        # Run commands on EC2
+                        # Session options to skip certificate checks
+                        \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+
+                        # Create WinRM session over HTTPS
+                        \$session = New-PSSession -ComputerName '${EC2_HOST}' `
+                                                  -UseSSL `
+                                                  -Credential \$cred `
+                                                  -Authentication Basic `
+                                                  -SessionOption \$sessOption
+
+                        # Execute deployment commands on EC2
                         Invoke-Command -Session \$session -ScriptBlock {
+                            # Ensure deployment directory exists
                             if (-Not (Test-Path '${DEPLOY_DIR}')) {
                                 New-Item -ItemType Directory -Path '${DEPLOY_DIR}'
                             }
 
-                            # Download JAR from S3
+                            # Download the JAR from S3
                             aws s3 cp s3://${S3_BUCKET}/${SERVICE_NAME}.jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar
 
-                            # Stop existing Java process
+                            # Stop any existing Java process running this service
                             Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
 
                             # Start the JAR
-                            Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -WindowStyle Hidden
+                            Start-Process -FilePath 'java' `
+                                          -ArgumentList '-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar' `
+                                          -WindowStyle Hidden
                         }
 
-                        # Remove session
+                        # Close the session
                         Remove-PSSession \$session
                     """
                 }
