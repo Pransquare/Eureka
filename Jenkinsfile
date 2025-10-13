@@ -8,7 +8,6 @@ pipeline {
     environment {
         DEPLOY_DIR = "C:\\Deployments"
         SERVICE_NAME = "eureka-server"
-        SERVICE_PORT = "8761"
         S3_BUCKET = "eureka-deployment-2025"
         REGION = "eu-north-1"
         EC2_HOST = "13.53.193.215"
@@ -35,11 +34,11 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2 via WinRM and S3') {
+        stage('Deploy to EC2 via WinRM') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds', 
-                    usernameVariable: 'EC2_USER', 
+                    credentialsId: 'ec2-admin-creds',
+                    usernameVariable: 'EC2_USER',
                     passwordVariable: 'EC2_PASSWORD'
                 )]) {
                     powershell """
@@ -47,10 +46,10 @@ pipeline {
                         \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
                         \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
                         
-                        # Create WinRM session over HTTP with Basic authentication
+                        # Create WinRM session
                         \$session = New-PSSession -ComputerName '${EC2_HOST}' -Credential \$cred -Authentication Basic
-                        
-                        # On EC2, download JAR from S3 using AWS CLI
+
+                        # Run commands on EC2
                         Invoke-Command -Session \$session -ScriptBlock {
                             if (-Not (Test-Path '${DEPLOY_DIR}')) {
                                 New-Item -ItemType Directory -Path '${DEPLOY_DIR}'
@@ -59,14 +58,14 @@ pipeline {
                             # Download JAR from S3
                             aws s3 cp s3://${S3_BUCKET}/${SERVICE_NAME}.jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar
 
-                            # Stop any running Java processes (optional)
+                            # Stop existing Java process
                             Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
 
-                            # Run the JAR
-                            Start-Process -FilePath 'java' -ArgumentList '-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar' -WindowStyle Hidden
+                            # Start the JAR
+                            Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -WindowStyle Hidden
                         }
 
-                        # Close session
+                        # Remove session
                         Remove-PSSession \$session
                     """
                 }
