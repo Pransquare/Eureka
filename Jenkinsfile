@@ -47,7 +47,8 @@ pipeline {
                         \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
                         \$cred = New-Object System.Management.Automation.PSCredential('Administrator', \$pass)
                         \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
-                        \$session = New-PSSession -ComputerName <EC2_PUBLIC_IP> -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                        \$session = New-PSSession -ComputerName 13.53.193.215 -UseSSL -Credential $cred -Authentication Basic -SessionOption $sessOption
+
 
                         Invoke-Command -Session \$session -ScriptBlock {
                             if (-not (Test-Path -Path '${DEPLOY_DIR}')) {
