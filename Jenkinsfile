@@ -34,42 +34,38 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2 via WinRM HTTPS') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds', 
-                    usernameVariable: 'EC2_USER', 
-                    passwordVariable: 'EC2_PASSWORD'
-                )]) {
-                    powershell """
-                        Write-Output '--- Starting deployment to EC2 ---'
-
-                        \$pass = ConvertTo-SecureString '${EC2_PASSWORD}' -AsPlainText -Force
-                        \$cred = New-Object System.Management.Automation.PSCredential('Administrator', \$pass)
-                        \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
-                        \$session = New-PSSession -ComputerName 13.53.193.215 -UseSSL -Credential $cred -Authentication Basic -SessionOption $sessOption
-
-
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            if (-not (Test-Path -Path '${DEPLOY_DIR}')) {
-                                New-Item -Path '${DEPLOY_DIR}' -ItemType Directory | Out-Null
-                            }
-                        }
-
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
-                        }
-
-                        Copy-Item -ToSession \$session -Path "C:\\Jenkins\\workspace\\Eureka-deploy-AWS\\target\\${SERVICE_NAME}.jar" -Destination "${DEPLOY_DIR}\\${SERVICE_NAME}.jar" -Force
-
-                        Invoke-Command -Session \$session -ScriptBlock {
-                            Start-Process -FilePath 'java' -ArgumentList "-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar --server.port=${SERVICE_PORT}" -NoNewWindow
-                        }
-
-                        Remove-PSSession \$session
-                    """
-                }
-            }
+       stage('Deploy to EC2 via WinRM HTTPS') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'ec2-admin-creds', 
+            usernameVariable: 'EC2_USER', 
+            passwordVariable: 'EC2_PASSWORD'
+        )]) {
+            powershell """
+                # Convert the password to a secure string
+                \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
+                
+                # Create PSCredential object
+                \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
+                
+                # Define WinRM session options (adjust as needed)
+                \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+                
+                # Connect to EC2 via WinRM HTTPS
+                \$session = New-PSSession -ComputerName 'YOUR_EC2_PUBLIC_IP' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                
+                # Copy the JAR to remote EC2
+                Copy-Item -Path 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\Eureka-deploy-AWS\\target\\eureka-server.jar' -Destination 'C:\\Deployments\\eureka-server.jar' -ToSession \$session
+                
+                # Run deployment command on EC2
+                Invoke-Command -Session \$session -ScriptBlock { java -jar C:\\Deployments\\eureka-server.jar }
+                
+                # Close the session
+                Remove-PSSession \$session
+            """
         }
+    }
+}
+
     }
 }
