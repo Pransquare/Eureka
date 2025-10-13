@@ -11,6 +11,7 @@ pipeline {
         SERVICE_PORT = "8761"
         S3_BUCKET = "eureka-deployment-2025"
         REGION = "eu-north-1"
+        EC2_HOST = "13.53.193.215"
     }
 
     stages {
@@ -35,46 +36,41 @@ pipeline {
         }
 
         stage('Deploy to EC2 via WinRM and S3') {
-    steps {
-        withCredentials([usernamePassword(
-            credentialsId: 'ec2-admin-creds', 
-            usernameVariable: 'EC2_USER', 
-            passwordVariable: 'EC2_PASSWORD'
-        )]) {
-            powershell """
-                # Convert password to secure string
-                \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
-                \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
-                
-                # WinRM session options
-                \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
-                
-                # Create WinRM session
-                \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
-                
-                # On EC2, download JAR from S3 using AWS CLI
-                Invoke-Command -Session \$session -ScriptBlock {
-                    # Make sure AWS CLI is installed and configured
-                    if (-Not (Test-Path 'C:\\Deployments')) {
-                        New-Item -ItemType Directory -Path 'C:\\Deployments'
-                    }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'ec2-admin-creds', 
+                    usernameVariable: 'EC2_USER', 
+                    passwordVariable: 'EC2_PASSWORD'
+                )]) {
+                    powershell """
+                        # Convert password to secure string
+                        \$secPassword = ConvertTo-SecureString '\$EC2_PASSWORD' -AsPlainText -Force
+                        \$cred = New-Object System.Management.Automation.PSCredential('\$EC2_USER', \$secPassword)
+                        
+                        # Create WinRM session over HTTP with Basic authentication
+                        \$session = New-PSSession -ComputerName '${EC2_HOST}' -Credential \$cred -Authentication Basic
+                        
+                        # On EC2, download JAR from S3 using AWS CLI
+                        Invoke-Command -Session \$session -ScriptBlock {
+                            if (-Not (Test-Path '${DEPLOY_DIR}')) {
+                                New-Item -ItemType Directory -Path '${DEPLOY_DIR}'
+                            }
 
-                    # Download from S3
-                    aws s3 cp s3://eureka-deployment-2025/eureka-server.jar C:\\Deployments\\eureka-server.jar
+                            # Download JAR from S3
+                            aws s3 cp s3://${S3_BUCKET}/${SERVICE_NAME}.jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar
 
-                    # Stop existing Java process (if needed)
-                    Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
+                            # Stop any running Java processes (optional)
+                            Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
 
-                    # Run the JAR
-                    Start-Process -FilePath 'java' -ArgumentList '-jar C:\\Deployments\\eureka-server.jar' -WindowStyle Hidden
+                            # Run the JAR
+                            Start-Process -FilePath 'java' -ArgumentList '-jar ${DEPLOY_DIR}\\${SERVICE_NAME}.jar' -WindowStyle Hidden
+                        }
+
+                        # Close session
+                        Remove-PSSession \$session
+                    """
                 }
-
-                # Close session
-                Remove-PSSession \$session
-            """
+            }
         }
-    }
-}
-
     }
 }
