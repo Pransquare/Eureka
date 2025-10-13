@@ -52,7 +52,7 @@ pipeline {
                 \$sessOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
                 
                 # Connect to EC2 via WinRM HTTPS
-                \$session = New-PSSession -ComputerName 'YOUR_EC2_PUBLIC_IP' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
+                \$session = New-PSSession -ComputerName '13.53.193.215' -UseSSL -Credential \$cred -Authentication Basic -SessionOption \$sessOption
                 
                 # Copy the JAR to remote EC2
                 Copy-Item -Path 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\Eureka-deploy-AWS\\target\\eureka-server.jar' -Destination 'C:\\Deployments\\eureka-server.jar' -ToSession \$session
