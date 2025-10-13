@@ -42,11 +42,12 @@ pipeline {
 
         stage('Deploy to EC2 via WinRM HTTPS') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'ec2-admin-creds',
-                    usernameVariable: 'EC2_USER',
-                    passwordVariable: 'EC2_PASSWORD'
-                )]) {
+               withCredentials([usernamePassword(
+    credentialsId: 'ec2-admin-creds', 
+    usernameVariable: 'EC2_USER', 
+    passwordVariable: 'EC2_PASSWORD'
+)])
+ {
                     powershell """
                         Write-Output '--- Starting deployment to EC2 ---'
 
