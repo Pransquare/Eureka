@@ -9,7 +9,7 @@ pipeline {
     environment {
         DEPLOY_DIR = "/opt/eureka"
         EC2_HOST = "13.60.47.188"
-        SERVICE_NAME = "eureka-0.0.1-SNAPSHOT.jar"
+        SERVICE_NAME = "eureka-server"
     }
 
     stages {
@@ -30,7 +30,7 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
-                sshagent(['EC2_SSH_CREDENTIAL_ID']) {
+                sshagent(['ec2-linux-key']) {
                     bat '''
                         echo ===== Deploying to EC2 =====
                         "C:\\Program Files\\Git\\bin\\bash.exe" -c "
