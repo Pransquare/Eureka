@@ -31,23 +31,23 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 echo "🚀 Deploying ${env.SERVICE_NAME} to EC2 (${env.EC2_HOST})"
-
-                // Use Jenkins SSH credentials
-                sshagent(['ec2-linux-key']) { // Replace with your Jenkins credential ID
+                
+                sshagent(['ec2-linux-key']) {
                     bat """
                         "C:\\Program Files\\Git\\bin\\bash.exe" -c '
+                            set -e
                             echo "=== Creating directories on EC2 ==="
                             ssh -o StrictHostKeyChecking=no ec2-user@${env.EC2_HOST} "mkdir -p ${env.DEPLOY_DIR}/logs"
-
+                            
                             echo "=== Copying JAR file to EC2 ==="
                             scp -o StrictHostKeyChecking=no target/${env.SERVICE_NAME}.jar ec2-user@${env.EC2_HOST}:${env.DEPLOY_DIR}/
-
+                            
                             echo "=== Stopping old Eureka instance (if any) ==="
                             ssh -o StrictHostKeyChecking=no ec2-user@${env.EC2_HOST} "pkill -f ${env.SERVICE_NAME}.jar || true"
-
+                            
                             echo "=== Starting new Eureka service ==="
                             ssh -o StrictHostKeyChecking=no ec2-user@${env.EC2_HOST} "nohup java -jar ${env.DEPLOY_DIR}/${env.SERVICE_NAME}.jar --server.port=8761 > ${env.DEPLOY_DIR}/logs/eureka.log 2>&1 &"
-
+                            
                             echo "=== Deployment complete ==="
                         '
                     """
