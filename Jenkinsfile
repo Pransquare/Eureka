@@ -35,9 +35,9 @@ pipeline {
                         echo ===== Deploying to EC2 =====
                         "C:\\Program Files\\Git\\bin\\bash.exe" -c "
                             ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'mkdir -p /opt/eureka/logs';
-                            scp -o StrictHostKeyChecking=no target/eureka-0.0.1-SNAPSHOT.jar ec2-user@13.60.47.188:/opt/eureka/;
-                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'pkill -f eureka-0.0.1-SNAPSHOT.jar || true';
-                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'nohup java -jar /opt/eureka/eureka-0.0.1-SNAPSHOT.jar --server.port=8761 > /opt/eureka/logs/eureka.log 2>&1 &';
+                            scp -o StrictHostKeyChecking=no target/eureka-server.jar ec2-user@13.60.47.188:/opt/eureka/;
+                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'pkill -f eureka-server.jar || true';
+                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'nohup java -jar /opt/eureka/eureka-server.jar --server.port=8761 > /opt/eureka/logs/eureka.log 2>&1 &';
                         "
                     '''
                 }
