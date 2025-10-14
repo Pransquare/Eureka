@@ -6,12 +6,13 @@ pipeline {
         maven 'Maven3'
     }
 
-    environment {
-        EC2_USER = "ec2-user"
-        EC2_HOST = "13.60.47.188"
-        PEM_PATH = "C:\\Users\\KRISHNA\\Downloads\\krishna.pem"
-        SERVICE_NAME = "eureka-server"
-    }
+   environment {
+    DEPLOY_DIR = "/home/ec2-user"
+    EC2_HOST = "13.60.47.188"
+    SERVICE_NAME = "eureka-server"
+    PEM_PATH = "C:\\ProgramData\\Jenkins\\.ssh\\krishna.pem"
+}
+
 
     stages {
         stage('Checkout') {
