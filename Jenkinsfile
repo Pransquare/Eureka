@@ -30,15 +30,27 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
+                echo "🚀 Deploying ${env.SERVICE_NAME} to EC2 (${env.EC2_HOST})"
                 sshagent(['ec2-linux-key']) {
+                    // We call Git Bash explicitly since Jenkins runs on Windows
                     bat '''
-                        echo ===== Deploying to EC2 =====
-                        "C:\\Program Files\\Git\\bin\\bash.exe" -c "
-                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'mkdir -p /opt/eureka/logs';
-                            scp -o StrictHostKeyChecking=no target/eureka-server.jar ec2-user@13.60.47.188:/opt/eureka/;
-                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'pkill -f eureka-server.jar || true';
-                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 'nohup java -jar /opt/eureka/eureka-server.jar --server.port=8761 > /opt/eureka/logs/eureka.log 2>&1 &';
-                        "
+                        echo ===== Deploying to EC2 via SSH =====
+                        "C:\\Program Files\\Git\\bin\\bash.exe" -c '
+                            set -e
+                            echo "=== Creating directories on EC2 ==="
+                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 "mkdir -p /opt/eureka/logs"
+                            
+                            echo "=== Copying JAR file to EC2 ==="
+                            scp -o StrictHostKeyChecking=no target/eureka-server.jar ec2-user@13.60.47.188:/opt/eureka/
+                            
+                            echo "=== Stopping old Eureka instance (if any) ==="
+                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 "pkill -f eureka-server.jar || true"
+                            
+                            echo "=== Starting new Eureka service ==="
+                            ssh -o StrictHostKeyChecking=no ec2-user@13.60.47.188 "nohup java -jar /opt/eureka/eureka-server.jar --server.port=8761 > /opt/eureka/logs/eureka.log 2>&1 &"
+                            
+                            echo "=== Deployment complete ==="
+                        '
                     '''
                 }
             }
@@ -47,10 +59,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Eureka deployed successfully to EC2!'
+            echo '✅ Eureka deployed successfully to EC2 (13.60.47.188)!'
         }
         failure {
-            echo '❌ Deployment failed. Check console output for details.'
+            echo '❌ Deployment failed. Check Jenkins console logs for error details.'
         }
     }
 }
