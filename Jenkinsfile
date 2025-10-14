@@ -1,57 +1,54 @@
 pipeline {
     agent any
 
+    environment {
+        DEPLOY_DIR = "/home/ec2-user"
+        EC2_HOST = "13.60.47.188"
+        SERVICE_NAME = "eureka-server"
+        PEM_PATH = "C:\\ProgramData\\Jenkins\\.ssh\\krishna.pem"
+    }
+
     tools {
         jdk 'Java17'
         maven 'Maven3'
     }
 
-   environment {
-    DEPLOY_DIR = "/home/ec2-user"
-    EC2_HOST = "13.60.47.188"
-    SERVICE_NAME = "eureka-server"
-    PEM_PATH = "C:\\ProgramData\\Jenkins\\.ssh\\krishna.pem"
-}
-
-
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
+                git url: 'https://github.com/Pransquare/Eureka.git', branch: 'master'
             }
         }
 
         stage('Build') {
             steps {
-                bat '''
-                    echo ===== Building Eureka Service =====
-                    mvn clean package -DskipTests
-                '''
+                bat 'mvn clean package -DskipTests'
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                bat '''
+                withEnv(["PATH=${tool 'Git'}/bin:${env.PATH}"]) {
+                    bat """
                     echo ===== Copying JAR to EC2 =====
-                    scp -i "%PEM_PATH%" -o StrictHostKeyChecking=no target\\%SERVICE_NAME%.jar %EC2_USER%@%EC2_HOST%:/home/%EC2_USER%/
+                    scp -i "${PEM_PATH}" -o StrictHostKeyChecking=no target\\${SERVICE_NAME}.jar ec2-user@${EC2_HOST}:${DEPLOY_DIR}/
 
                     echo ===== Stopping old Eureka instance if running =====
-                    ssh -i "%PEM_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% "pkill -f %SERVICE_NAME%.jar || true"
+                    ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "pkill -f ${SERVICE_NAME}.jar || true"
 
                     echo ===== Starting new Eureka instance =====
-                    ssh -i "%PEM_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% "nohup java -jar /home/%EC2_USER%/%SERVICE_NAME%.jar > eureka.log 2>&1 &"
-                '''
+                    ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=8761 > ${DEPLOY_DIR}/eureka.log 2>&1 &"
+
+                    echo ✅ Deployment completed successfully!
+                    """
+                }
             }
         }
     }
 
     post {
-        success {
-            echo '✅ Eureka deployed successfully to EC2!'
-        }
         failure {
-            echo '❌ Deployment failed. Check Jenkins console logs for details.'
+            echo "❌ Deployment failed. Check Jenkins console logs for details."
         }
     }
 }
