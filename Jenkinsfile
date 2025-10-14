@@ -10,7 +10,7 @@ pipeline {
         DEPLOY_DIR = "/opt/eureka"
         EC2_HOST = "13.60.47.188"
         SERVICE_NAME = "eureka-server"
-        PEM_PATH = "C:\Users\KRISHNA\Downloads\krishna.pem" // <-- your PEM file path
+        PEM_PATH = "C:\\Users\\KRISHNA\\Downloads\\krishna.pem" // <-- your PEM file path
     }
 
     stages {
