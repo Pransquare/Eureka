@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DEPLOY_DIR = "/home/ec2-user"
-        EC2_HOST = "13.60.47.188"
+        EC2_HOST = "51.21.200.23"
         SERVICE_NAME = "eureka-server"
         PEM_PATH = "C:\\ProgramData\\Jenkins\\.ssh\\krishna.pem"
     }
