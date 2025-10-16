@@ -51,26 +51,28 @@ echo "Deployment completed"
        stage('Deploy to EC2') {
     steps {
         sshPublisher(
-            publishers: [
-                sshPublisherDesc(
-                    configName: 'ec2-server',
-                    transfers: [
-                        sshTransfer(
-                            sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
-                            removePrefix: '',
-                            remoteDirectory: "/home/ec2-user",
-                            execCommand: """
-                                mkdir -p /home/ec2-user/services/eureka-server
-                                mv deploy.sh services/eureka-server/
-                                mv ${SERVICE_NAME}.jar services/eureka-server/
-                                chmod +x services/eureka-server/deploy.sh
-                                services/eureka-server/deploy.sh
-                            """
-                        )
-                    ],
-                    usePromotionTimestamp: false,
-                    verbose: true
+    publishers: [
+        sshPublisherDesc(
+            configName: 'ec2-server',
+            transfers: [
+                sshTransfer(
+                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
+                    removePrefix: '',
+                    remoteDirectory: "/home/ec2-user",
+                    execCommand: """
+                        mkdir -p /home/ec2-user/services/eureka-server
+                        mv deploy.sh ${SERVICE_NAME}.jar services/eureka-server/
+                        chmod +x services/eureka-server/deploy.sh
+                        services/eureka-server/deploy.sh
+                    """
                 )
+            ],
+            usePromotionTimestamp: false,
+            verbose: true
+        )
+    ]
+)
+
             ]
         )
     }
