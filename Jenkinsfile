@@ -4,9 +4,9 @@ pipeline {
     environment {
         DEPLOY_DIR = "/home/ec2-user/api-gateway"
         EC2_HOST = "13.53.39.170"
-        SERVICE_NAME = "api-gateway"
-        SERVER_PORT = "8085"
-        LOG_FILE = "api-gateway.log"
+        SERVICE_NAME = "eureka-server"
+        SERVER_PORT = "8761"
+        LOG_FILE = "eureka-server.log"
         SSH_CREDENTIALS_ID = "ec2-ssh-key" // Jenkins SSH credentials
     }
 
@@ -19,7 +19,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'master', url: 'https://github.com/Pransquare/Api-Gateway.git'
+                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
             }
         }
 
