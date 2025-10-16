@@ -38,56 +38,50 @@ pipeline {
         }
 
         stage('Prepare Deploy Script') {
-            steps {
-                echo "===== Creating deploy.sh script ====="
-                script {
-                    writeFile file: 'deploy.sh', text: """
-                        #!/bin/bash
-                        echo "Starting deployment of ${SERVICE_NAME}..."
+    steps {
+        echo "===== Creating deploy.sh script ====="
+        script {
+            // Move deploy.sh inside target folder
+            writeFile file: 'target/deploy.sh', text: """
+                #!/bin/bash
+                echo "Starting deployment of ${SERVICE_NAME}..."
 
-                        # Create directory if not exists
-                        mkdir -p ${DEPLOY_DIR}
-
-                        # Kill any existing process
-                        pkill -f ${SERVICE_NAME}.jar || true
-
-                        # Move JAR to deploy directory
-                        mv ${SERVICE_NAME}.jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar || true
-
-                        # Run the service
-                        nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
-                        
-                        echo "Deployment completed successfully."
-                    """
-                }
-            }
+                mkdir -p ${DEPLOY_DIR}
+                pkill -f ${SERVICE_NAME}.jar || true
+                mv ${SERVICE_NAME}.jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar || true
+                nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
+                echo "Deployment completed successfully."
+            """
         }
+    }
+}
 
-        stage('Deploy to EC2') {
-            steps {
-                echo "===== Deploying application to EC2 ====="
-                sshPublisher(
-                    publishers: [
-                        sshPublisherDesc(
-                            configName: 'ec2-server', // Must match Jenkins SSH configuration
-                            transfers: [
-                                sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar,deploy.sh",
-                                    removePrefix: 'target',
-                                    remoteDirectory: DEPLOY_DIR,
-                                    execCommand: """
-                                        chmod +x ${DEPLOY_DIR}/deploy.sh
-                                        ${DEPLOY_DIR}/deploy.sh
-                                    """
-                                )
-                            ],
-                            usePromotionTimestamp: false,
-                            verbose: true
+stage('Deploy to EC2') {
+    steps {
+        echo "===== Deploying application to EC2 ====="
+        sshPublisher(
+            publishers: [
+                sshPublisherDesc(
+                    configName: 'ec2-server',
+                    transfers: [
+                        sshTransfer(
+                            sourceFiles: "target/${SERVICE_NAME}.jar,target/deploy.sh",
+                            removePrefix: 'target',
+                            remoteDirectory: DEPLOY_DIR,
+                            execCommand: """
+                                chmod +x ${DEPLOY_DIR}/deploy.sh
+                                ${DEPLOY_DIR}/deploy.sh
+                            """
                         )
-                    ]
+                    ],
+                    usePromotionTimestamp: false,
+                    verbose: true
                 )
-            }
-        }
+            ]
+        )
+    }
+}
+
     }
 
     post {
