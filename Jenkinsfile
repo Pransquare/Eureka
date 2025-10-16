@@ -72,9 +72,6 @@ echo "Deployment completed"
         )
     ]
 )
-
-            ]
-        )
     }
 }
 
