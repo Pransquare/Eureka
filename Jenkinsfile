@@ -48,30 +48,34 @@ echo "Deployment completed"
             }
         }
 
-        stage('Deploy to EC2') {
-            steps {
-                sshPublisher(
-                    publishers: [
-                        sshPublisherDesc(
-                            configName: 'ec2-server',  // must match Jenkins SSH site
-                            transfers: [
-                                sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
-                                    removePrefix: '',   // no prefix
-                                    remoteDirectory: DEPLOY_DIR,
-                                    execCommand: """
-                                        chmod +x ${DEPLOY_DIR}/deploy.sh
-                                        ${DEPLOY_DIR}/deploy.sh
-                                    """
-                                )
-                            ],
-                            usePromotionTimestamp: false,
-                            verbose: true
+       stage('Deploy to EC2') {
+    steps {
+        sshPublisher(
+            publishers: [
+                sshPublisherDesc(
+                    configName: 'ec2-server',
+                    transfers: [
+                        sshTransfer(
+                            sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
+                            removePrefix: '',
+                            remoteDirectory: "/home/ec2-user",
+                            execCommand: """
+                                mkdir -p /home/ec2-user/services/eureka-server
+                                mv deploy.sh services/eureka-server/
+                                mv ${SERVICE_NAME}.jar services/eureka-server/
+                                chmod +x services/eureka-server/deploy.sh
+                                services/eureka-server/deploy.sh
+                            """
                         )
-                    ]
+                    ],
+                    usePromotionTimestamp: false,
+                    verbose: true
                 )
-            }
-        }
+            ]
+        )
+    }
+}
+
     }
 
     post {
