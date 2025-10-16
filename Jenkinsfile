@@ -3,9 +3,11 @@ pipeline {
 
     environment {
         DEPLOY_DIR = "/home/ec2-user/services/eureka-server"
+        EC2_HOST = "13.53.39.170"
         SERVICE_NAME = "eureka-server"
         SERVER_PORT = "8761"
         LOG_FILE = "eureka-server.log"
+        SSH_CREDENTIALS_ID = "ec2-ssh-key" // Jenkins SSH credentials ID
     }
 
     tools {
@@ -14,6 +16,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
@@ -23,10 +26,11 @@ pipeline {
         stage('Build') {
             steps {
                 script {
+                    def mvnCmd = 'mvn clean package -DskipTests'
                     if (isUnix()) {
-                        sh "mvn clean package -DskipTests"
+                        sh mvnCmd
                     } else {
-                        bat "mvn clean package -DskipTests"
+                        bat mvnCmd
                     }
                 }
             }
@@ -35,54 +39,51 @@ pipeline {
         stage('Prepare Deploy Script') {
             steps {
                 script {
-                    writeFile file: 'deploy.sh', text: """#!/bin/bash
-mkdir -p ${DEPLOY_DIR}
-PID=\$(pgrep -f ${SERVICE_NAME}.jar) || true
-if [ ! -z "\$PID" ]; then
-  kill -9 \$PID
-fi
-nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
-echo "Deployment completed"
-"""
+                    writeFile file: 'deploy.sh', text: """
+                        #!/bin/bash
+                        mkdir -p ${DEPLOY_DIR}
+                        pkill -f ${SERVICE_NAME}.jar || true
+                        nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
+                        echo "Deployment completed"
+                    """
                 }
             }
         }
 
-       stage('Deploy to EC2') {
-    steps {
-        sshPublisher(
-    publishers: [
-        sshPublisherDesc(
-            configName: 'ec2-server',
-            transfers: [
-                sshTransfer(
-                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
-                    removePrefix: '',
-                    remoteDirectory: "/home/ec2-user",
-                    execCommand: """
-                        mkdir -p /home/ec2-user/services/eureka-server
-                        mv deploy.sh ${SERVICE_NAME}.jar services/eureka-server/
-                        chmod +x services/eureka-server/deploy.sh
-                        services/eureka-server/deploy.sh
-                    """
+        stage('Deploy to EC2') {
+            steps {
+                sshPublisher(
+                    publishers: [
+                        sshPublisherDesc(
+                            configName: 'ec2-server', // Jenkins SSH configuration
+                            transfers: [
+                                sshTransfer(
+                                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
+                                    removePrefix: '',
+                                    remoteDirectory: "/home/ec2-user",
+                                    execCommand: """
+                                        mkdir -p ${DEPLOY_DIR}
+                                        mv deploy.sh ${SERVICE_NAME}.jar ${DEPLOY_DIR}/
+                                        chmod +x ${DEPLOY_DIR}/deploy.sh
+                                        ${DEPLOY_DIR}/deploy.sh
+                                    """
+                                )
+                            ],
+                            usePromotionTimestamp: false,
+                            verbose: true
+                        )
+                    ]
                 )
-            ],
-            usePromotionTimestamp: false,
-            verbose: true
-        )
-    ]
-)
-    }
-}
-
+            }
+        }
     }
 
     post {
         success {
-            echo "Deployment completed successfully! ${SERVICE_NAME} is running on port ${SERVER_PORT}"
+            echo " Deployment completed successfully! ${SERVICE_NAME} is running on port ${SERVER_PORT}"
         }
         failure {
-            echo "Deployment failed. Check Jenkins console logs for details."
+            echo " Deployment failed. Check Jenkins console logs for details."
         }
     }
 }
