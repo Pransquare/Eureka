@@ -1,90 +1,101 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'Java17'      // Must match JDK name in Jenkins Global Tool Configuration
+        maven 'Maven3'    // Must match Maven name in Jenkins Global Tool Configuration
+    }
+
     environment {
-        SERVICE_NAME = "eureka-server"
-        SERVER_PORT = "8761"
+        EC2_USER = 'ec2-user'
+        EC2_HOST = '13.53.39.170'        // Replace with your EC2 public IP
+        DEPLOY_DIR = '/home/ec2-user/services/eureka-server'
+        APP_NAME = 'eureka-server'
+        JAR_NAME = 'eureka-server.jar'
     }
 
     stages {
+
         stage('Checkout SCM') {
             steps {
-                echo "===== Cloning repository from GitHub ====="
+                echo '===== Cloning repository from GitHub ====='
                 git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
+            }
+        }
+
+        stage('Verify Java & Maven') {
+            steps {
+                echo '===== Verifying Java and Maven ====='
+                bat 'java -version'
+                bat 'echo %JAVA_HOME%'
+                bat 'mvn -version'
             }
         }
 
         stage('Build') {
             steps {
-                echo "===== Building project using Maven ====="
+                echo '===== Building project using Maven ====='
                 bat "mvn clean package -DskipTests"
             }
         }
 
         stage('Prepare Deploy Script') {
             steps {
-                echo "===== Creating deploy.sh script ====="
+                echo '===== Creating deploy.sh script ====='
                 script {
-                    writeFile file: "target/deploy.sh", text: """
-#!/bin/bash
-SERVICE_NAME=${SERVICE_NAME}
-DEPLOY_DIR=/home/ec2-user/services/\$SERVICE_NAME
-LOG_FILE=\${SERVICE_NAME}.log
+                    writeFile file: 'deploy.sh', text: """
+                        #!/bin/bash
+                        mkdir -p ${DEPLOY_DIR}
+                        cd ${DEPLOY_DIR}
 
-# Create directories if not exist
-mkdir -p \$DEPLOY_DIR
+                        # Stop previous instance if running
+                        PID=\$(pgrep -f ${JAR_NAME})
+                        if [ ! -z "\$PID" ]; then
+                            echo "Stopping previous Eureka instance (PID: \$PID)"
+                            kill -9 \$PID
+                        fi
 
-# Stop running service if exists
-pkill -f \${SERVICE_NAME}.jar || true
+                        # Copy new jar
+                        cp ${WORKSPACE}/target/${JAR_NAME} ${DEPLOY_DIR}/
 
-# Move JAR to deploy directory
-mv \${SERVICE_NAME}.jar \$DEPLOY_DIR/\${SERVICE_NAME}.jar || true
-
-# Start service
-nohup java -jar \$DEPLOY_DIR/\${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > \$DEPLOY_DIR/\$LOG_FILE 2>&1 &
-
-echo "Deployment completed successfully."
-"""
+                        # Run in background
+                        nohup java -jar ${DEPLOY_DIR}/${JAR_NAME} > ${DEPLOY_DIR}/eureka.log 2>&1 &
+                        echo "Eureka server deployed and started successfully!"
+                    """
                 }
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                echo "===== Deploying application to EC2 ====="
-                sshPublisher(
-                    publishers: [
-                        sshPublisherDesc(
-                            configName: 'ec2-server',  // Your Jenkins SSH config
-                            transfers: [
-                                sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar,target/deploy.sh",
-                                    removePrefix: "target",
-                                    remoteDirectory: "/home/ec2-user/services/${SERVICE_NAME}",
-                                    execCommand: """
-chmod +x /home/ec2-user/services/${SERVICE_NAME}/deploy.sh
-/home/ec2-user/services/${SERVICE_NAME}/deploy.sh
-"""
-                                )
-                            ],
-                            usePromotionTimestamp: false,
-                            verbose: true
-                        )
-                    ]
-                )
+                echo '===== Deploying application to EC2 ====='
+                sshPublisher(publishers: [
+                    sshPublisherDesc(
+                        configName: 'ec2-server',   // Must be configured in Jenkins SSH credentials
+                        transfers: [
+                            sshTransfer(
+                                sourceFiles: 'deploy.sh,target/' + JAR_NAME,
+                                remoteDirectory: DEPLOY_DIR,
+                                removePrefix: '',
+                                execCommand: """
+                                    chmod +x ${DEPLOY_DIR}/deploy.sh
+                                    ${DEPLOY_DIR}/deploy.sh
+                                """
+                            )
+                        ],
+                        verbose: true
+                    )
+                ])
             }
         }
     }
 
     post {
         success {
-            echo "Eureka service deployed successfully!"
-        }
-        unstable {
-            echo "Deployment completed with warnings."
+            echo 'Deployment completed successfully!'
         }
         failure {
-            echo "Deployment failed."
+            echo 'Deployment failed.'
         }
     }
 }
