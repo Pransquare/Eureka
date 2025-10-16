@@ -37,21 +37,22 @@ pipeline {
             }
         }
 
-        stage('Prepare Deploy Script') {
+    stage('Prepare Deploy Script') {
     steps {
         echo "===== Creating deploy.sh script ====="
         script {
-            // Move deploy.sh inside target folder
             writeFile file: 'target/deploy.sh', text: """
-                #!/bin/bash
-                echo "Starting deployment of ${SERVICE_NAME}..."
+#!/bin/bash
+SERVICE_NAME=${SERVICE_NAME}
+DEPLOY_DIR=/home/ec2-user/services/\$SERVICE_NAME
+LOG_FILE=\${SERVICE_NAME}.log
 
-                mkdir -p ${DEPLOY_DIR}
-                pkill -f ${SERVICE_NAME}.jar || true
-                mv ${SERVICE_NAME}.jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar || true
-                nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
-                echo "Deployment completed successfully."
-            """
+mkdir -p \$DEPLOY_DIR
+pkill -f \${SERVICE_NAME}.jar || true
+mv \${SERVICE_NAME}.jar \$DEPLOY_DIR/\${SERVICE_NAME}.jar || true
+nohup java -jar \$DEPLOY_DIR/\${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > \$DEPLOY_DIR/\$LOG_FILE 2>&1 &
+echo "Deployment completed successfully."
+"""
         }
     }
 }
@@ -66,12 +67,12 @@ stage('Deploy to EC2') {
                     transfers: [
                         sshTransfer(
                             sourceFiles: "target/${SERVICE_NAME}.jar,target/deploy.sh",
-                            removePrefix: 'target',
-                            remoteDirectory: DEPLOY_DIR,
+                            removePrefix: "target",
+                            remoteDirectory: "/home/ec2-user/services/${SERVICE_NAME}",
                             execCommand: """
-                                chmod +x ${DEPLOY_DIR}/deploy.sh
-                                ${DEPLOY_DIR}/deploy.sh
-                            """
+chmod +x /home/ec2-user/services/${SERVICE_NAME}/deploy.sh
+/home/ec2-user/services/${SERVICE_NAME}/deploy.sh
+"""
                         )
                     ],
                     usePromotionTimestamp: false,
@@ -81,6 +82,7 @@ stage('Deploy to EC2') {
         )
     }
 }
+
 
     }
 
