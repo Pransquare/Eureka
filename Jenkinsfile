@@ -50,32 +50,33 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2') {
-            steps {
-                sshPublisher(
-                    publishers: [
-                        sshPublisherDesc(
-                            configName: 'ec2-server', // Jenkins SSH configuration
-                            transfers: [
-                                sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
-                                    removePrefix: '',
-                                    remoteDirectory: "/home/ec2-user",
-                                    execCommand: """
-                                        mkdir -p ${DEPLOY_DIR}
-                                        mv deploy.sh ${SERVICE_NAME}.jar ${DEPLOY_DIR}/
-                                        chmod +x ${DEPLOY_DIR}/deploy.sh
-                                        ${DEPLOY_DIR}/deploy.sh
-                                    """
-                                )
-                            ],
-                            usePromotionTimestamp: false,
-                            verbose: true
+       stage('Deploy to EC2') {
+    steps {
+        sshPublisher(
+            publishers: [
+                sshPublisherDesc(
+                    configName: 'ec2-server', // Jenkins SSH configuration
+                    transfers: [
+                        sshTransfer(
+                            sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
+                            removePrefix: '',
+                            remoteDirectory: "/home/ec2-user/tmp", // upload both here
+                            execCommand: """
+                                mkdir -p ${DEPLOY_DIR}
+                                mv /home/ec2-user/tmp/deploy.sh /home/ec2-user/tmp/${SERVICE_NAME}.jar ${DEPLOY_DIR}/
+                                chmod +x ${DEPLOY_DIR}/deploy.sh
+                                ${DEPLOY_DIR}/deploy.sh
+                            """
                         )
-                    ]
+                    ],
+                    usePromotionTimestamp: false,
+                    verbose: true
                 )
-            }
-        }
+            ]
+        )
+    }
+}
+
     }
 
     post {
