@@ -2,13 +2,12 @@ pipeline {
     agent any
 
     environment {
+        DEPLOY_DIR = "/home/ec2-user/services/eureka-server"
         EC2_HOST = "13.53.39.170"
-        SSH_CREDENTIALS_ID = "ec2-ssh-key"
-        EC2_USER = "ec2-user"
-        DEPLOY_DIR = "/home/ec2-user/services/eureka-server" // Change per service
-        SERVICE_NAME = "eureka-server"                       // Change per service
-        SERVER_PORT = "8761"                                 // Change per service
-        LOG_FILE = "${SERVICE_NAME}.log"
+        SERVICE_NAME = "eureka-server"
+        SERVER_PORT = "8761"
+        LOG_FILE = "eureka-server.log"
+        SSH_CREDENTIALS_ID = "ec2-ssh-key" // Jenkins SSH credentials
     }
 
     tools {
@@ -20,28 +19,45 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "===== Cloning repository ====="
-                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git' // Change repo
+                echo "===== Cloning repository from GitHub ====="
+                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
             }
         }
 
         stage('Build') {
             steps {
-                echo "===== Building project ====="
-                bat "mvn clean package -DskipTests"
+                echo "===== Building project using Maven ====="
+                script {
+                    if (isUnix()) {
+                        sh 'mvn clean package -DskipTests'
+                    } else {
+                        bat 'mvn clean package -DskipTests'
+                    }
+                }
             }
         }
 
         stage('Prepare Deploy Script') {
             steps {
-                echo "===== Preparing deploy script ====="
+                echo "===== Creating deploy.sh script ====="
                 script {
                     writeFile file: 'deploy.sh', text: """
                         #!/bin/bash
+                        echo "Starting deployment of ${SERVICE_NAME}..."
+
+                        # Create directory if not exists
                         mkdir -p ${DEPLOY_DIR}
+
+                        # Kill any existing process
                         pkill -f ${SERVICE_NAME}.jar || true
+
+                        # Move JAR to deploy directory
+                        mv ${SERVICE_NAME}.jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar || true
+
+                        # Run the service
                         nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
-                        echo "Deployment completed for ${SERVICE_NAME}"
+                        
+                        echo "Deployment completed successfully."
                     """
                 }
             }
@@ -49,18 +65,23 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
-                echo "===== Deploying to EC2 ====="
+                echo "===== Deploying application to EC2 ====="
                 sshPublisher(
                     publishers: [
                         sshPublisherDesc(
-                            configName: 'ec2-server',
+                            configName: 'ec2-server', // Must match Jenkins SSH configuration
                             transfers: [
                                 sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
-                                    remoteDirectory: "${DEPLOY_DIR}",
-                                    execCommand: "chmod +x ${DEPLOY_DIR}/deploy.sh && ${DEPLOY_DIR}/deploy.sh"
+                                    sourceFiles: "target/${SERVICE_NAME}.jar,deploy.sh",
+                                    removePrefix: 'target',
+                                    remoteDirectory: DEPLOY_DIR,
+                                    execCommand: """
+                                        chmod +x ${DEPLOY_DIR}/deploy.sh
+                                        ${DEPLOY_DIR}/deploy.sh
+                                    """
                                 )
                             ],
+                            usePromotionTimestamp: false,
                             verbose: true
                         )
                     ]
@@ -71,10 +92,10 @@ pipeline {
 
     post {
         success {
-            echo "${SERVICE_NAME} deployed successfully on port ${SERVER_PORT}!"
+            echo "✅ Deployment completed successfully! ${SERVICE_NAME} is running on port ${SERVER_PORT}"
         }
         failure {
-            echo "Deployment failed for ${SERVICE_NAME}. Check Jenkins logs."
+            echo "❌ Deployment failed. Check Jenkins console logs for details."
         }
     }
 }
