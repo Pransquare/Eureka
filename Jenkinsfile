@@ -39,7 +39,8 @@ pipeline {
         stage('Prepare Deploy Script') {
             steps {
                 script {
-                    writeFile file: 'eureka.sh', text: """#!/bin/bash
+                    // Move deploy script into target folder so it matches JAR location
+                    writeFile file: 'target/eureka.sh', text: """#!/bin/bash
 # Ensure Java is installed
 if ! command -v java &> /dev/null
 then
@@ -58,6 +59,7 @@ touch ${DEPLOY_DIR}/${LOG_FILE}
 
 # Start service
 nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
+
 echo "Deployment completed"
 """
                 }
@@ -69,11 +71,11 @@ echo "Deployment completed"
                 sshPublisher(
                     publishers: [
                         sshPublisherDesc(
-                            configName: 'ec2-ssh-server', // Jenkins SSH configuration
+                            configName: 'ec2-ssh-server', // must match Jenkins SSH configuration
                             transfers: [
                                 sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, eureka.sh",
-                                    removePrefix: 'target', // Remove "target/" from path
+                                    sourceFiles: "target/${SERVICE_NAME}.jar,target/eureka.sh",
+                                    removePrefix: 'target',           // removes 'target/' from path
                                     remoteDirectory: DEPLOY_DIR,
                                     execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
                                 )
