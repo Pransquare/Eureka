@@ -7,7 +7,7 @@ pipeline {
         SERVICE_NAME = "eureka-server"
         SERVER_PORT = "8761"
         LOG_FILE = "eureka-server.log"
-        SSH_CREDENTIALS_ID = "ec2-key" // Jenkins SSH credentials
+        SSH_CREDENTIALS_ID = "ec2-key"
     }
 
     tools {
@@ -36,6 +36,20 @@ pipeline {
             }
         }
 
+        stage('Prepare Deploy Script') {
+            steps {
+                script {
+                    writeFile file: 'deploy.sh', text: """
+                        #!/bin/bash
+                        mkdir -p ${DEPLOY_DIR}
+                        pkill -f ${SERVICE_NAME}.jar || true
+                        nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
+                        echo "Deployment completed. Check logs at ${DEPLOY_DIR}/${LOG_FILE}"
+                    """
+                }
+            }
+        }
+
         stage('Deploy to EC2') {
             steps {
                 sshPublisher(
@@ -44,24 +58,16 @@ pipeline {
                             configName: 'ec2-ssh-server',
                             transfers: [
                                 sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar",
-                                    removePrefix: 'target',       // Put JAR directly in DEPLOY_DIR
-                                    remoteDirectory: DEPLOY_DIR
+                                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
+                                    removePrefix: 'target',
+                                    remoteDirectory: DEPLOY_DIR,
+                                    execCommand: """
+                                        chmod +x ${DEPLOY_DIR}/deploy.sh
+                                        ${DEPLOY_DIR}/deploy.sh
+                                    """
                                 )
                             ],
-                            usePromotionTimestamp: false,
-                            verbose: true,
-                            execCommand: """
-                                echo 'Starting deployment on EC2...'
-                                mkdir -p ${DEPLOY_DIR}
-                                echo 'Killing existing process if any'
-                                pkill -f ${SERVICE_NAME}.jar || true
-                                echo 'Starting new process'
-                                nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 & || true
-                                sleep 3
-                                echo 'Deployment script completed'
-                                echo 'Check logs: ${DEPLOY_DIR}/${LOG_FILE}'
-                            """
+                            verbose: true
                         )
                     ]
                 )
@@ -71,13 +77,10 @@ pipeline {
 
     post {
         success {
-            echo " Deployment completed successfully! Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
-        }
-        unstable {
-            echo "Deployment completed but with warnings. Check Jenkins console and EC2 logs."
+            echo " Deployment executed. Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
         }
         failure {
-            echo " Deployment failed. Check Jenkins console and EC2 logs."
+            echo "Deployment failed. Check Jenkins logs."
         }
     }
 }
