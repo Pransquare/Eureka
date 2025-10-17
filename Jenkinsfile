@@ -71,13 +71,13 @@ pipeline {
 
     post {
         success {
-            echo "Deployment completed successfully! Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
+            echo " Deployment completed successfully! Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
         }
         unstable {
             echo "Deployment completed but with warnings. Check Jenkins console and EC2 logs."
         }
         failure {
-            echo "Deployment failed. Check Jenkins console and EC2 logs."
+            echo " Deployment failed. Check Jenkins console and EC2 logs."
         }
     }
 }
