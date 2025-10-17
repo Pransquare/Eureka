@@ -7,7 +7,7 @@ pipeline {
         SERVICE_NAME = "eureka-server"
         SERVER_PORT = "8761"
         LOG_FILE = "eureka-server.log"
-        SSH_CREDENTIALS_ID = "ec2-key"
+        SSH_CREDENTIALS_ID = "ec2-key" // Jenkins SSH credentials
     }
 
     tools {
@@ -39,13 +39,14 @@ pipeline {
         stage('Prepare Deploy Script') {
             steps {
                 script {
-                    writeFile file: 'deploy.sh', text: """
-                        #!/bin/bash
-                        mkdir -p ${DEPLOY_DIR}
-                        pkill -f ${SERVICE_NAME}.jar || true
-                        nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
-                        echo "Deployment completed. Check logs at ${DEPLOY_DIR}/${LOG_FILE}"
-                    """
+                    // Write deploy.sh inside target/
+                    writeFile file: "target/deploy.sh", text: """
+#!/bin/bash
+mkdir -p ${DEPLOY_DIR}
+pkill -f ${SERVICE_NAME}.jar || true
+nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
+echo "Deployment completed. Check logs at ${DEPLOY_DIR}/${LOG_FILE}"
+"""
                 }
             }
         }
@@ -58,13 +59,10 @@ pipeline {
                             configName: 'ec2-ssh-server',
                             transfers: [
                                 sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
+                                    sourceFiles: "target/${SERVICE_NAME}.jar, target/deploy.sh",
                                     removePrefix: 'target',
                                     remoteDirectory: DEPLOY_DIR,
-                                    execCommand: """
-                                        chmod +x ${DEPLOY_DIR}/deploy.sh
-                                        ${DEPLOY_DIR}/deploy.sh
-                                    """
+                                    execCommand: "chmod +x ${DEPLOY_DIR}/deploy.sh && ${DEPLOY_DIR}/deploy.sh"
                                 )
                             ],
                             verbose: true
@@ -77,10 +75,10 @@ pipeline {
 
     post {
         success {
-            echo " Deployment executed. Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
+            echo " Deployment completed successfully! Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
         }
         failure {
-            echo "Deployment failed. Check Jenkins logs."
+            echo " Deployment failed. Check Jenkins console logs for details."
         }
     }
 }
