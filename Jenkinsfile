@@ -104,17 +104,17 @@ pipeline {
 
                             transfers: [
 
-                                sshTransfer(
+                               sshTransfer(
+    sourceFiles: "target/${SERVICE_NAME}.jar",
+    removePrefix: 'target',
+    remoteDirectory: DEPLOY_DIR,
+    execCommand: """
+        pkill -f ${SERVICE_NAME}.jar || true
+        nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=8761 > ${DEPLOY_DIR}/${SERVICE_NAME}.log 2>&1 &
+        echo 'Service started'
+    """
+)
 
-                                    sourceFiles: 'target/${SERVICE_NAME}.jar, deploy.sh',
-
-                                    removePrefix: '',
-
-                                    remoteDirectory: DEPLOY_DIR,
-
-                                    execCommand: "chmod +x ${DEPLOY_DIR}/deploy.sh && ${DEPLOY_DIR}/deploy.sh"
-
-                                )
 
                             ],
 
