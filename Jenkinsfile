@@ -100,13 +100,13 @@ pipeline {
 
                         sshPublisherDesc(
 
-                            configName: 'ec2-server', // must match Jenkins SSH configuration
+                            configName: 'ec2-ssh-server', // must match Jenkins SSH configuration
 
                             transfers: [
 
                                 sshTransfer(
 
-                                    sourceFiles: '${SERVICE_NAME}.jar, eureka.sh',
+                                    sourceFiles: 'target/${SERVICE_NAME}.jar, eureka.sh',
 
                                     removePrefix: '',
 
