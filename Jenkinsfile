@@ -40,7 +40,7 @@ pipeline {
             steps {
                 script {
                     // Write deploy.sh inside target/
-                    writeFile file: "target/deploy.sh", text: """
+                    writeFile file: "target/eureka.sh", text: """
 #!/bin/bash
 mkdir -p ${DEPLOY_DIR}
 pkill -f ${SERVICE_NAME}.jar || true
@@ -59,10 +59,10 @@ echo "Deployment completed. Check logs at ${DEPLOY_DIR}/${LOG_FILE}"
                             configName: 'ec2-ssh-server',
                             transfers: [
                                 sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, target/deploy.sh",
+                                    sourceFiles: "target/${SERVICE_NAME}.jar, target/eureka.sh",
                                     removePrefix: 'target',
                                     remoteDirectory: DEPLOY_DIR,
-                                    execCommand: "chmod +x ${DEPLOY_DIR}/deploy.sh && ${DEPLOY_DIR}/deploy.sh"
+                                    execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
                                 )
                             ],
                             verbose: true
