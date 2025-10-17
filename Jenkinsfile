@@ -3,7 +3,7 @@ pipeline {
  
     environment {
         DEPLOY_DIR = "/home/ec2-user/deployment"
-        EC2_HOST = "13.53.39.170"
+        EC2_HOST = "13.60.33.154"
         SERVICE_NAME = "eureka-server"
         SERVER_PORT = "8761"
         LOG_FILE = "eureka-server.log"
