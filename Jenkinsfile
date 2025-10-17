@@ -32,7 +32,7 @@ pipeline {
 
             steps {
 
-                git branch: 'master', url: 'https://github.com/Pransquare/Api-Gateway.git'
+                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
 
             }
 
