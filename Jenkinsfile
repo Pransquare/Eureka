@@ -3,11 +3,11 @@ pipeline {
 
     environment {
         DEPLOY_DIR = "/home/ec2-user/services/eureka-server"
-        EC2_HOST = "13.53.39.170"
+        EC2_HOST = "13.60.33.154"
         SERVICE_NAME = "eureka-server"
         SERVER_PORT = "8761"
         LOG_FILE = "eureka-server.log"
-        SSH_CREDENTIALS_ID = "ec2-ssh-key" // Jenkins SSH credentials ID
+        SSH_CREDENTIALS_ID = "ec2-key" // Jenkins SSH credentials ID
     }
 
     tools {
@@ -55,7 +55,7 @@ pipeline {
         sshPublisher(
             publishers: [
                 sshPublisherDesc(
-                    configName: 'ec2-server', // Jenkins SSH configuration
+                    configName: 'ec2-ssh-server', // Jenkins SSH configuration
                     transfers: [
                         sshTransfer(
                             sourceFiles: "target/${SERVICE_NAME}.jar, deploy.sh",
