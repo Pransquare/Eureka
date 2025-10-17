@@ -4,7 +4,7 @@ pipeline {
  
     environment {
 
-        DEPLOY_DIR = "/home/ec2-user/deployment"
+        DEPLOY_DIR = "/home/ec2-user/eureka-server"
 
         EC2_HOST = "13.60.33.154"
 
@@ -70,7 +70,7 @@ pipeline {
 
                     // Create deploy.sh content
 
-                    writeFile file: 'eureka.sh', text: """
+                    writeFile file: 'deploy.sh', text: """
 
                         #!/bin/bash
 
@@ -106,13 +106,13 @@ pipeline {
 
                                 sshTransfer(
 
-                                    sourceFiles: 'target/${SERVICE_NAME}.jar, eureka.sh',
+                                    sourceFiles: 'target/${SERVICE_NAME}.jar, deploy.sh',
 
                                     removePrefix: '',
 
                                     remoteDirectory: DEPLOY_DIR,
 
-                                    execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
+                                    execCommand: "chmod +x ${DEPLOY_DIR}/deploy.sh && ${DEPLOY_DIR}/deploy.sh"
 
                                 )
 
