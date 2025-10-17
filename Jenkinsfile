@@ -74,7 +74,7 @@ echo "Deployment completed"
                             transfers: [
                                 sshTransfer(
                                     sourceFiles: "target/${SERVICE_NAME}.jar, eureka.sh",
-                                    removePrefix: '',
+                                    removePrefix: 'target',
                                     remoteDirectory: DEPLOY_DIR,
                                     execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
                                 )
