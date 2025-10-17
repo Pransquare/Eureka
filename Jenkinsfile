@@ -106,7 +106,7 @@ pipeline {
 
                                 sshTransfer(
 
-                                    sourceFiles: 'target/${SERVICE_NAME}.jar, eureka.sh',
+                                    sourceFiles: '${SERVICE_NAME}.jar, eureka.sh',
 
                                     removePrefix: '',
 
