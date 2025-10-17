@@ -112,7 +112,7 @@ pipeline {
 
                                     remoteDirectory: DEPLOY_DIR,
 
-                                    execCommand: "chmod +x ${DEPLOY_DIR}/deploy.sh && ${DEPLOY_DIR}/eureka.sh"
+                                    execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
 
                                 )
 
