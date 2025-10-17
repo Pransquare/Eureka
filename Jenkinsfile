@@ -58,7 +58,7 @@ pkill -f ${SERVICE_NAME}.jar || true
 touch ${DEPLOY_DIR}/${LOG_FILE}
 
 # Start service
-nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
+nohup java -jar ${DEPLOY_DIR}/target/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
 echo "Deployment completed"
 """
                 }
@@ -74,7 +74,7 @@ echo "Deployment completed"
                             transfers: [
                                 sshTransfer(
                                     sourceFiles: "target/${SERVICE_NAME}.jar, eureka.sh",
-                                    removePrefix: 'target',
+                                    removePrefix: '',
                                     remoteDirectory: DEPLOY_DIR,
                                     execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
                                 )
