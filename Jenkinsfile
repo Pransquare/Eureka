@@ -2,10 +2,10 @@ pipeline {
     agent any
  
     environment {
-        DEPLOY_DIR = "/home/ec2-user/eureka"
-        EC2_HOST = "13.61.25.51"
+        DEPLOY_DIR = "/home/ec2-user/eureka-server"
+        EC2_HOST = "13.48.44.111"
         SERVICE_NAME = "eureka-server"
-        PEM_PATH = "C:\\Users\\KRISHNA\\Downloads\\ec2-linux-key.pem"
+        PEM_PATH = "C:\\ProgramData\\Jenkins\\.ssh\\ec2-key.pem"
     }
  
     tools {
