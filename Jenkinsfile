@@ -3,7 +3,7 @@ pipeline {
  
     environment {
         DEPLOY_DIR = "/home/ec2-user/eureka-server"
-        EC2_HOST = "13.53.193.100"
+        EC2_HOST = "51.21.170.207"
         SERVICE_NAME = "eureka-server"
         PEM_PATH = "C:\\Users\\KRISHNA\\Downloads\\ec2-linux-key.pem"
     }
