@@ -1,84 +1,56 @@
 pipeline {
     agent any
-
+ 
     environment {
-        DEPLOY_DIR = "/home/ec2-user/deployment"
-        EC2_HOST = "13.60.33.154"
+        DEPLOY_DIR = "/home/ec2-user/eureka"
+        EC2_HOST = "13.61.25.51"
         SERVICE_NAME = "eureka-server"
-        SERVER_PORT = "8761"
-        LOG_FILE = "eureka-server.log"
-        SSH_CREDENTIALS_ID = "ec2-key" // Jenkins SSH credentials
+        PEM_PATH = "C:\\Users\\KRISHNA\\Downloads\\ec2-linux-key.pem"
     }
-
+ 
     tools {
         jdk 'Java17'
         maven 'Maven3'
     }
-
+ 
     stages {
-
+ 
         stage('Checkout') {
             steps {
-                git branch: 'master', url: 'https://github.com/Pransquare/Eureka.git'
+                git url: 'https://github.com/Pransquare/Eureka.git', branch: 'master'
             }
         }
-
+ 
         stage('Build') {
             steps {
-                script {
-                    def mvnCmd = 'mvn clean package -DskipTests'
-                    if (isUnix()) {
-                        sh mvnCmd
-                    } else {
-                        bat mvnCmd
-                    }
-                }
+                bat 'mvn clean package -DskipTests'
             }
         }
-
-        stage('Prepare Deploy Script') {
-            steps {
-                script {
-                    // Write deploy.sh inside target/
-                    writeFile file: "target/eureka.sh", text: """
-#!/bin/bash
-mkdir -p ${DEPLOY_DIR}
-pkill -f ${SERVICE_NAME}.jar || true
-nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=${SERVER_PORT} > ${DEPLOY_DIR}/${LOG_FILE} 2>&1 &
-echo "Deployment completed. Check logs at ${DEPLOY_DIR}/${LOG_FILE}"
-"""
-                }
-            }
-        }
-
+ 
         stage('Deploy to EC2') {
             steps {
-                sshPublisher(
-                    publishers: [
-                        sshPublisherDesc(
-                            configName: 'ec2-ssh-server',
-                            transfers: [
-                                sshTransfer(
-                                    sourceFiles: "target/${SERVICE_NAME}.jar, target/eureka.sh",
-                                    removePrefix: 'target',
-                                    remoteDirectory: DEPLOY_DIR,
-                                    execCommand: "chmod +x ${DEPLOY_DIR}/eureka.sh && ${DEPLOY_DIR}/eureka.sh"
-                                )
-                            ],
-                            verbose: true
-                        )
-                    ]
-                )
+                bat """
+                echo ===== Creating deploy directory on EC2 if not exists =====
+                ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "mkdir -p ${DEPLOY_DIR}"
+ 
+                echo ===== Copying JAR to EC2 =====
+                scp -i "${PEM_PATH}" -o StrictHostKeyChecking=no target\\${SERVICE_NAME}.jar ec2-user@${EC2_HOST}:${DEPLOY_DIR}/
+ 
+                echo ===== Stopping old API-Gateway instance if running =====
+                ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "pkill -f ${SERVICE_NAME}.jar || true"
+ 
+                echo ===== Starting new API-Gateway instance =====
+                ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=8085 > ${DEPLOY_DIR}/api-gateway.log 2>&1 &"
+ 
+                echo ✅ Deployment completed successfully!
+                """
             }
         }
     }
-
+ 
     post {
-        success {
-            echo " Deployment completed successfully! Check EC2 logs at ${DEPLOY_DIR}/${LOG_FILE}"
-        }
         failure {
-            echo " Deployment failed. Check Jenkins console logs for details."
+            echo "❌ Deployment failed. Check Jenkins console logs for details."
         }
     }
 }
