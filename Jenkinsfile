@@ -3,7 +3,7 @@ pipeline {
  
     environment {
         DEPLOY_DIR = "/home/ec2-user/eureka-server"
-        EC2_HOST = "16.170.219.99"
+        EC2_HOST = "16.171.155.143"
         SERVICE_NAME = "eureka-server"
         PEM_PATH = "C:\\Users\\KRISHNA\\Downloads\\ec2-linux-key.pem"
     }
@@ -36,13 +36,13 @@ pipeline {
                 echo ===== Copying JAR to EC2 =====
                 scp -i "${PEM_PATH}" -o StrictHostKeyChecking=no target\\${SERVICE_NAME}.jar ec2-user@${EC2_HOST}:${DEPLOY_DIR}/
  
-                echo ===== Stopping old API-Gateway instance if running =====
+                echo ===== Stopping old Eureka instance if running =====
                 ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "pkill -f ${SERVICE_NAME}.jar || true"
  
-                echo ===== Starting new API-Gateway instance =====
+                echo ===== Starting new Eureka instance =====
                 ssh -i "${PEM_PATH}" -o StrictHostKeyChecking=no ec2-user@${EC2_HOST} "nohup java -jar ${DEPLOY_DIR}/${SERVICE_NAME}.jar --server.port=8761 > ${DEPLOY_DIR}/eureka-server.log 2>&1 &"
  
-                echo ✅ Deployment completed successfully!
+                echo  Deployment completed successfully!
                 """
             }
         }
@@ -50,7 +50,7 @@ pipeline {
  
     post {
         failure {
-            echo "❌ Deployment failed. Check Jenkins console logs for details."
+            echo " Deployment failed. Check Jenkins console logs for details."
         }
     }
 }
